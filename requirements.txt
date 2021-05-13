@@ -1,0 +1,2 @@
+slixmpp
+lowatt_enedis
