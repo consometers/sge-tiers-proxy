@@ -3,6 +3,7 @@
 import slixmpp
 import asyncio
 import logging
+import os
 
 import sge
 import xmpp_interface
@@ -59,11 +60,15 @@ if __name__ == '__main__':
     parser.add_argument('--log-level', default="INFO")
     args = parser.parse_args()
 
+    conf = config.File(args.conf)
+    sge_credentials = config.File(args.sge_credentials)
+
     logger = logging.getLogger()
     # Log info to a file, ignoring the log level from command line
     # (always include data access details, rotates every monday)
+    os.makedirs(conf['logs_dir'], exist_ok=True)
     file = logging.handlers.TimedRotatingFileHandler(
-        "proxy.log", when='W0', interval=1, backupCount=0, atTime=dt.time.min)
+        os.path.join(conf['logs_dir'], "proxy.log"), when='W0', interval=1, backupCount=0, atTime=dt.time.min)
     file.setLevel(logging.INFO)
     file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(file)
@@ -71,9 +76,6 @@ if __name__ == '__main__':
     console = logging.StreamHandler()
     console.setLevel(getattr(logging, args.log_level.upper()))
     logger.addHandler(console)
-
-    conf = config.File(args.conf)
-    sge_credentials = config.File(args.sge_credentials)
 
     loop = asyncio.get_event_loop()
 
