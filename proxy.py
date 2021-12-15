@@ -32,8 +32,8 @@ async def main(conf, sge_credentials):
     handler = xmpp_interface.GetMeasurements(xmpp_client,
                                              authorizations.validate,
                                              detailed_measurements.get_measurements)
-    xmpp_client['xep_0050'].add_command(node='get_measurements',
-                                        name='Get measurements',
+    xmpp_client['xep_0050'].add_command(node='get_records',
+                                        name='Get records',
                                         handler=handler.handle_request)
 
 if __name__ == '__main__':
