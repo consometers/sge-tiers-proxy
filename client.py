@@ -3,10 +3,12 @@
 import slixmpp
 import xml
 from slixmpp.xmlstream import tostring
+from slixmpp.exceptions import IqError
 from xml.etree.ElementTree import fromstring
 from xml.sax.saxutils import escape
 import asyncio
 import utils
+import quoalise
 
 class SgeProxyClient:
 
@@ -36,7 +38,13 @@ class SgeProxyClient:
             </command>
         """))
 
-        response = await iq.send()
+        try:
+            response = await iq.send()
+        except IqError as e:
+            if e.condition == "not-authorized":
+                raise quoalise.NotAuthorized(e.text)
+            else:
+                raise e
 
         command = response.xml.find('.//{http://jabber.org/protocol/commands}command')
         if command.attrib['status'] == "completed":

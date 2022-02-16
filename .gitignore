@@ -1,4 +1,5 @@
 /private
 /logs
+/env
 
 __pycache__/

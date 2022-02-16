@@ -11,7 +11,7 @@ import re
 from slixmpp.xmlstream import ElementBase, ET
 import pytz
 import datetime as dt
-import utils
+import quoalise
 
 class SgeError(Exception):
     def __init__(self, message, code=None):
@@ -180,8 +180,8 @@ class DetailedMeasurements:
         demande.update({
             'initiateurLogin': self.login,
             'pointId': usage_point_id,
-            'dateDebut': utils.format_iso_date(start_date),
-            'dateFin': utils.format_iso_date(end_date + dt.timedelta(days=1))
+            'dateDebut': quoalise.format_iso_date(start_date),
+            'dateFin': quoalise.format_iso_date(end_date + dt.timedelta(days=1))
         })
 
         try:
@@ -194,10 +194,10 @@ class DetailedMeasurements:
             name = 'quoalise'
             namespace = 'urn:quoalise:0'
 
-        quoalise = Quoalise()
+        quoalise_element = Quoalise()
 
         xmldata = ET.Element('data')
-        quoalise.xml.append(xmldata)
+        quoalise_element.xml.append(xmldata)
 
         meta = ET.Element('meta')
         xmldata.append(meta)
@@ -240,7 +240,7 @@ class DetailedMeasurements:
                 senml = ET.Element('senml', t=str(t), v=str(v))
             sensml.append(senml)
 
-        return quoalise
+        return quoalise_element
 
 if __name__ == '__main__':
 

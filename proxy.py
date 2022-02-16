@@ -23,9 +23,23 @@ async def main(conf, sge_credentials):
     xmpp_client.register_plugin('xep_0050')
     xmpp_client.register_plugin('xep_0199', {'keepalive': True, 'frequency':15})
 
-    xmpp_client.connect()
+    if 'address' in conf['xmpp'] and 'port' in conf['xmpp']:
+        xmpp_client.connect(address=(conf['xmpp']['address'], conf['xmpp']['port']))
+    else:
+        xmpp_client.connect()
 
-    await xmpp_client.wait_until('session_start')
+    session_state = asyncio.Future()
+
+    def session_start_waiter(event_data):
+        session_state.set_result(True)
+
+    xmpp_client.add_event_handler(
+        "session_start",
+        session_start_waiter,
+        disposable=True,
+    )
+
+    await asyncio.wait_for(session_state, 10)
 
     xmpp_client.send_presence()
 

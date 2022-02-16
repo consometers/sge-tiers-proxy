@@ -13,7 +13,7 @@ import re
 
 from sge import SgeError
 from authorization import MeasurementScope, HistoryScope
-import utils
+import quoalise
 
 # TODO convert to QuoaliseException, extending XMPPError
 def fail_with(message, code):
@@ -76,8 +76,8 @@ class GetMeasurements:
     def handle_submit(self, payload, session):
 
         identifier = payload['values']['identifier']
-        start_date = utils.parse_iso_date(payload['values']['start_date'])
-        end_date = utils.parse_iso_date(payload['values']['end_date'])
+        start_date = quoalise.parse_iso_date(payload['values']['start_date'])
+        end_date = quoalise.parse_iso_date(payload['values']['end_date'])
 
         logging.info(f"{session['from']} {identifier} {start_date} {end_date}")
 
@@ -100,7 +100,7 @@ class GetMeasurements:
             raise XMPPError(condition='not-authorized', text=str(e))
 
         try:
-            quoalise = self.data_provider(measurement, usage_point_id, start_date, end_date)
+            data = self.data_provider(measurement, usage_point_id, start_date, end_date)
         except SgeError as e:
             # TODO does session needs cleanup?
             return fail_with(e.message, e.code)
@@ -113,6 +113,6 @@ class GetMeasurements:
                       value=f"Success")
 
         session['next'] = None
-        session['payload'] = [form, quoalise]
+        session['payload'] = [form, data]
 
         return session

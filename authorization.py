@@ -1,5 +1,5 @@
 import datetime as dt
-import utils
+import quoalise
 
 class Authorizations:
 
@@ -62,8 +62,8 @@ class Authorization:
 
     @classmethod
     def from_conf(cls, conf):
-        return cls(utils.parse_iso_date(conf['begins_at']),
-                   utils.parse_iso_date(conf['expires_at']),
+        return cls(quoalise.parse_iso_date(conf['begins_at']),
+                   quoalise.parse_iso_date(conf['expires_at']),
                    measurement_scope=MeasurementScope.from_conf(conf['measurements']))
 
 class MeasurementScope:
@@ -121,8 +121,8 @@ class HistoryScope:
             return None
         date_from = conf.get('from')
         date_to = conf.get('to')
-        date_from = utils.parse_iso_date(date_from) if date_from else None
-        date_to = utils.parse_iso_date(date_to) if date_to else None
+        date_from = quoalise.parse_iso_date(date_from) if date_from else None
+        date_to = quoalise.parse_iso_date(date_to) if date_to else None
         return cls(date_from, date_to)
 
     def get_exclusions(self, other_scope):

@@ -9,6 +9,7 @@ import asyncio
 
 import unittest
 from client import SgeProxyClient
+import quoalise
 import datetime as dt
 
 CONF_CLIENT = None
@@ -60,9 +61,11 @@ class TestGetMeasurement(unittest.TestCase):
         measurement = f"urn:dev:prm:{self.usage_point['id']}_consumption/active_power/raw"
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
-        measurements = self.loop.run_until_complete(
-            self.client.get_measurement(measurement, start_date, end_date))
-        print(measurements)
+        with self.assertRaises(quoalise.NotAuthorized) as context:
+            measurements = self.loop.run_until_complete(
+                self.client.get_measurement(measurement, start_date, end_date))
+
+        self.assertTrue(self.usage_point['id'] in str(context.exception))
 
 if __name__ == "__main__":
 
