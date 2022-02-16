@@ -2,6 +2,7 @@
 
 import datetime as dt
 import suds
+import urllib
 
 import lowatt_enedis
 import lowatt_enedis.services
@@ -185,10 +186,19 @@ class DetailedMeasurements:
         })
 
         try:
-            resp = self.client.service.consulterMesuresDetaillees(demande)
+            httpcode, resp = self.client.service.consulterMesuresDetaillees(demande)
         except suds.WebFault as e:
             res = e.fault.detail.erreur.resultat
             raise SgeError(res.value, res._code)
+        except Exception as e:
+            # Suds client does not seem to handle HTTP errors very well,
+            # it ends up raising Exception((503, 'Service Unavailable'))
+            if len(e.args) == 1 and len(e.args[0]) == 2 and type(e.args[0][0]) == int:
+                code = str(e.args[0][0])
+                reason = str(e.args[0][1])
+                raise SgeError(reason, code)
+            else:
+                raise e
 
         class Quoalise(ElementBase):
             name = 'quoalise'
