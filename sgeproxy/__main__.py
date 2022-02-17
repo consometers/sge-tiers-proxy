@@ -5,9 +5,9 @@ import asyncio
 import logging
 import os
 
-import sge
-import xmpp_interface
-from authorization import Authorizations
+import sgeproxy.sge
+import sgeproxy.xmpp_interface
+from sgeproxy.authorization import Authorizations
 
 async def main(conf, sge_credentials):
 
@@ -15,7 +15,7 @@ async def main(conf, sge_credentials):
 
     authorizations = Authorizations.from_conf(conf)
 
-    detailed_measurements = sge.DetailedMeasurements(sge_credentials)
+    detailed_measurements = sgeproxy.sge.DetailedMeasurements(sge_credentials)
 
     xmpp_client = slixmpp.ClientXMPP(conf['xmpp']['full_jid'], conf['xmpp']['password'])
 
@@ -43,7 +43,7 @@ async def main(conf, sge_credentials):
 
     xmpp_client.send_presence()
 
-    handler = xmpp_interface.GetMeasurements(xmpp_client,
+    handler = sgeproxy.xmpp_interface.GetMeasurements(xmpp_client,
                                              authorizations.validate,
                                              detailed_measurements.get_measurements)
     xmpp_client['xep_0050'].add_command(node='get_records',
@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
     import argparse
     import sys
-    import config
+    import sgeproxy.config
     import datetime as dt
     import logging.handlers
 
@@ -74,8 +74,8 @@ if __name__ == '__main__':
     parser.add_argument('--log-level', default="INFO")
     args = parser.parse_args()
 
-    conf = config.File(args.conf)
-    sge_credentials = config.File(args.sge_credentials)
+    conf = sgeproxy.config.File(args.conf)
+    sge_credentials = sgeproxy.config.File(args.sge_credentials)
 
     logger = logging.getLogger()
     # Log info to a file, ignoring the log level from command line

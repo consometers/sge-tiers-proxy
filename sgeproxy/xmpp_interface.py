@@ -11,8 +11,8 @@ from slixmpp.xmlstream import ElementBase, ET, register_stanza_plugin
 import json
 import re
 
-from sge import SgeError
-from authorization import MeasurementScope, HistoryScope
+from sgeproxy.sge import SgeError
+from sgeproxy.authorization import MeasurementScope, HistoryScope
 import quoalise
 
 # TODO convert to QuoaliseException, extending XMPPError

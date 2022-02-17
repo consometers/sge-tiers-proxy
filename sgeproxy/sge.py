@@ -186,7 +186,7 @@ class DetailedMeasurements:
         })
 
         try:
-            httpcode, resp = self.client.service.consulterMesuresDetaillees(demande)
+            resp = self.client.service.consulterMesuresDetaillees(demande)
         except suds.WebFault as e:
             res = e.fault.detail.erreur.resultat
             raise SgeError(res.value, res._code)

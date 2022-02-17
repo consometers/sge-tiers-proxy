@@ -8,7 +8,6 @@ from xml.sax.saxutils import escape
 import asyncio
 
 import unittest
-from client import SgeProxyClient
 import quoalise
 import datetime as dt
 
@@ -27,11 +26,17 @@ class TestGetMeasurement(unittest.TestCase):
             self.usage_point = CONF_CLIENT['usage_points'][usage_point_name]
 
         self.loop = asyncio.get_event_loop()
-        self.client = self.loop.run_until_complete(
-            SgeProxyClient.connect(
+
+        if 'address' in CONF_CLIENT['xmpp'] and 'port' in CONF_CLIENT['xmpp']:
+            address = (CONF_CLIENT['xmpp']['address'], CONF_CLIENT['xmpp']['port'])
+        else:
+            address = None
+
+        self.client = quoalise.Client.connect(
                 CONF_CLIENT['xmpp']['bare_jid'],
                 CONF_CLIENT['xmpp']['password'],
-                CONF_PROXY['xmpp']['full_jid']))
+                CONF_PROXY['xmpp']['full_jid'],
+                address=address)
 
     def tearDown(self):
         self.client.disconnect()
@@ -45,16 +50,14 @@ class TestGetMeasurement(unittest.TestCase):
         measurement = f"urn:dev:prm:{self.usage_point['id']}_consumption/active_power/raw"
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
-        measurements = self.loop.run_until_complete(
-            self.client.get_measurement(measurement, start_date, end_date))
+        measurements = self.client.get_records(measurement, start_date, end_date)
         print(measurements)
 
     def test_get_authorized_production_active_power(self):
         measurement = f"urn:dev:prm:{self.usage_point['id']}_production/active_power/raw"
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
-        measurements = self.loop.run_until_complete(
-            self.client.get_measurement(measurement, start_date, end_date))
+        measurements = self.client.get_records(measurement, start_date, end_date)
         print(measurements)
 
     def test_get_unauthorized(self):
@@ -62,8 +65,7 @@ class TestGetMeasurement(unittest.TestCase):
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
         with self.assertRaises(quoalise.NotAuthorized) as context:
-            measurements = self.loop.run_until_complete(
-                self.client.get_measurement(measurement, start_date, end_date))
+            measurements = self.client.get_records(measurement, start_date, end_date)
 
         self.assertTrue(self.usage_point['id'] in str(context.exception))
 
@@ -72,7 +74,7 @@ if __name__ == "__main__":
     import sys
     import argparse
     import logging
-    import config
+    import sgeproxy.config
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--log-level', default="INFO")
@@ -81,7 +83,7 @@ if __name__ == "__main__":
     args, unittest_args = parser.parse_known_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
-    CONF_CLIENT = config.File(args.conf_client)
-    CONF_PROXY = config.File(args.conf_proxy)
+    CONF_CLIENT = sgeproxy.config.File(args.conf_client)
+    CONF_PROXY = sgeproxy.config.File(args.conf_proxy)
 
     unittest.main(argv=[sys.argv[0]] + unittest_args)
