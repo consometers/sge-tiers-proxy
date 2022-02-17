@@ -1,10 +1,10 @@
 import os
 import json
 
-class File:
 
+class File:
     def __init__(self, json_file_path):
-        with open(json_file_path, 'r') as json_file:
+        with open(json_file_path, "r") as json_file:
             self.conf = json.load(json_file)
         self.path = json_file_path
 

@@ -1,3 +1,6 @@
 slixmpp
 lowatt_enedis
 pytz
+flake8
+black
+pre-commit

@@ -32,3 +32,11 @@ Limitations:
 - Trottled to one request per second
 - Maximum 7 days requested at once
 - Oldest data 36 months ago
+
+## Contributing
+
+Please run black and flake8 before commit. It can be done automatically with a git pre-commit hook:
+
+```bash
+pre-commit install
+```
