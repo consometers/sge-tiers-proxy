@@ -4,3 +4,5 @@ pytz
 flake8
 black
 pre-commit
+sqlalchemy
+psycopg2

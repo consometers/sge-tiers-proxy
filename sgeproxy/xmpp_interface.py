@@ -4,11 +4,12 @@ import logging
 import datetime as dt
 
 from slixmpp.exceptions import XMPPError
+from sqlalchemy.exc import IntegrityError
 
 import re
 
 from sgeproxy.sge import SgeError
-from sgeproxy.authorization import MeasurementScope, HistoryScope
+from sgeproxy.db import User, WebservicesCall, WebservicesCallStatus
 import quoalise
 
 
@@ -33,9 +34,9 @@ class GetMeasurements:
 
     SAMPLE_IDENTIFIER = "urn:dev:prm:00000000000000_consumption/active_power/raw"
 
-    def __init__(self, xmpp_client, request_validator, data_provider):
+    def __init__(self, xmpp_client, db_session_maker, data_provider):
         self.xmpp_client = xmpp_client
-        self.request_validator = request_validator
+        self.db_session_maker = db_session_maker
         self.data_provider = data_provider
 
     def handle_request(self, iq, session):
@@ -101,26 +102,42 @@ class GetMeasurements:
         usage_point_id = m.group(1)
         measurement = m.group(2)
 
-        try:
-            measurement_scope = MeasurementScope(
-                details=True,
-                consumption="consumption" in identifier,
-                production="production" in identifier,
-                history=HistoryScope(date_from=start_date, date_to=end_date),
-            )
-            self.request_validator(
-                session["from"].bare,
-                usage_point_id,
-                measurement_scope=measurement_scope,
-            )
-        except PermissionError as e:
-            raise XMPPError(condition="not-authorized", text=str(e))
+        with self.db_session_maker() as db:
 
-        try:
-            data = self.data_provider(measurement, usage_point_id, start_date, end_date)
-        except SgeError as e:
-            # TODO does session needs cleanup?
-            return fail_with(e.message, e.code)
+            user = db.query(User).get(session["from"].bare)
+            if user is None:
+                raise XMPPError(
+                    condition="not-authorized",
+                    text=f'Unknown user {session["from"].bare}',
+                )
+
+            try:
+                call_date = dt.datetime.now()
+                consent = user.consent_for(db, usage_point_id, call_date)
+
+                call = WebservicesCall(
+                    usage_point_id=usage_point_id,
+                    user=user,
+                    consent=consent,
+                    called_at=call_date,
+                )
+                db.add(call)
+                db.commit()
+
+            except (PermissionError, IntegrityError) as e:
+                raise XMPPError(condition="not-authorized", text=str(e))
+
+            try:
+                data = self.data_provider(
+                    measurement, usage_point_id, start_date, end_date
+                )
+                call.status = WebservicesCallStatus.OK
+            except SgeError as e:
+                call.status = WebservicesCallStatus.FAILED
+                call.error = e.code
+                return fail_with(e.message, e.code)
+            finally:
+                db.commit()
 
         form = self.xmpp_client["xep_0004"].make_form(
             ftype="result", title="Get measurements"

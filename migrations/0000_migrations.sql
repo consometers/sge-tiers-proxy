@@ -1,0 +1,10 @@
+BEGIN;
+
+CREATE TABLE migrations (
+    version int NOT NULL PRIMARY KEY,
+    applied_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO migrations (version) VALUES (0);
+
+COMMIT;

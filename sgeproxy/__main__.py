@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
-import slixmpp
 import asyncio
 import logging
 import os
 
+import slixmpp
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 import sgeproxy.sge
 import sgeproxy.xmpp_interface
-from sgeproxy.authorization import Authorizations
 
 
 async def main(conf, sge_credentials):
@@ -19,7 +21,8 @@ async def main(conf, sge_credentials):
         )
     )
 
-    authorizations = Authorizations.from_conf(conf)
+    db_engine = create_engine(conf["db"]["url"])
+    db_session_maker = sessionmaker(bind=db_engine)
 
     detailed_measurements = sgeproxy.sge.DetailedMeasurements(sge_credentials)
 
@@ -50,7 +53,7 @@ async def main(conf, sge_credentials):
     xmpp_client.send_presence()
 
     handler = sgeproxy.xmpp_interface.GetMeasurements(
-        xmpp_client, authorizations.validate, detailed_measurements.get_measurements
+        xmpp_client, db_session_maker, detailed_measurements.get_measurements
     )
     xmpp_client["xep_0050"].add_command(
         node="get_records", name="Get records", handler=handler.handle_request
