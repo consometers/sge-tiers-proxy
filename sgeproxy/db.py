@@ -1,4 +1,7 @@
+import os
+import re
 import enum
+import glob
 import datetime as dt
 
 from sqlalchemy import (
@@ -14,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import text
 
 Base = declarative_base()
 
@@ -26,6 +30,48 @@ class Migration(Base):
 
     def __repr__(self):
         return f"<Migration(version='{self.version}')>"
+
+    @staticmethod
+    def deployed_version(connection):
+        # Return None if table does not exist
+        query = text("SELECT to_regclass('migrations')")
+        if connection.execute(query).scalar() is None:
+            return None
+        # Else return the highest version
+        query = text("SELECT MAX(version) FROM migrations")
+        return connection.execute(query).scalar()
+
+    @staticmethod
+    def files():
+        my_dir = os.path.dirname(__file__)
+        files_glob = os.path.join(my_dir, "..", "migrations", "*.sql")
+        migrations = []
+
+        for sql_file in sorted(glob.glob(files_glob)):
+            filename = os.path.basename(sql_file)
+            result = re.match(r"^(\d{4})_.*\.sql", filename)
+            if not result:
+                raise RuntimeError(f"Unexpected migration file name {filename}")
+
+            version = int(result.group(1))
+            migrations.append((version, sql_file))
+
+        return migrations
+
+    @classmethod
+    def migrate(cls, connection):
+        deployed_version = cls.deployed_version(connection)
+
+        for version, sql_file in cls.files():
+            if deployed_version is not None and deployed_version >= version:
+                continue
+
+            with open(sql_file) as f:
+                query = text(f.read())
+                connection.execute(query)
+
+            if cls.deployed_version(connection) != version:
+                raise RuntimeError("Unexpected deployed version after migration")
 
 
 consents_usage_points_association = Table(

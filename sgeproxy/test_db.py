@@ -1,13 +1,9 @@
 import unittest
-import glob
-import os
-import re
 
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql import text
-from sgeproxy.db import User, UsagePoint, Consent, WebservicesCall
+from sgeproxy.db import Migration, User, UsagePoint, Consent, WebservicesCall
 
 import datetime as dt
 
@@ -33,25 +29,10 @@ class TestDbMigrations(unittest.TestCase):
             con.execute("DROP SCHEMA public CASCADE")
             con.execute("CREATE SCHEMA public")
 
-            for sql_file in sorted(glob.glob("migrations/*.sql")):
+            Migration.migrate(con)
 
-                filename = os.path.basename(sql_file)
-                result = re.match(r"^(\d{4})_.*\.sql", filename)
-
-                self.assertTrue(result)
-
-                version = int(result.group(1))
-
-                with open(sql_file) as f:
-                    query = text(f.read())
-                    con.execute(query)
-
-                query = text(
-                    "SELECT version FROM migrations ORDER BY applied_at DESC LIMIT 1"
-                )
-                result = con.execute(query)
-                row = result.fetchone()
-                self.assertEqual(version, row[0])
+            latest_version, _ = Migration.files()[-1]
+            self.assertEqual(latest_version, Migration.deployed_version(con))
 
 
 class TestDbConsents(unittest.TestCase):
@@ -64,10 +45,7 @@ class TestDbConsents(unittest.TestCase):
             con.execute("DROP SCHEMA public CASCADE")
             con.execute("CREATE SCHEMA public")
 
-            for sql_file in sorted(glob.glob("migrations/*.sql")):
-                with open(sql_file) as f:
-                    query = text(f.read())
-                    con.execute(query)
+            Migration.migrate(con)
 
         Session = sessionmaker(bind=engine)
         self.session = Session()
