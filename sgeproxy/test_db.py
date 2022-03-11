@@ -3,7 +3,14 @@ import unittest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
-from sgeproxy.db import Migration, User, UsagePoint, Consent, WebservicesCall
+from sgeproxy.db import (
+    Migration,
+    User,
+    UsagePoint,
+    Consent,
+    WebservicesCall,
+    ConsentUsagePoint,
+)
 
 import datetime as dt
 
@@ -65,7 +72,9 @@ class TestDbConsents(unittest.TestCase):
             begins_at=dt.datetime(2020, 1, 1),
             expires_at=dt.datetime(2021, 1, 1),
         )
-        self.homer_consent_to_alice.usage_points.append(self.homer_usage_point)
+        self.homer_consent_to_alice.usage_points.append(
+            ConsentUsagePoint(usage_point=self.homer_usage_point, comment="Home")
+        )
         self.session.add(self.homer_consent_to_alice)
 
         self.alice.consents.append(self.homer_consent_to_alice)
@@ -85,7 +94,9 @@ class TestDbConsents(unittest.TestCase):
             begins_at=dt.datetime(2020, 1, 1),
             expires_at=dt.datetime(2021, 3, 1),
         )
-        self.burns_consent_to_sister.usage_points.append(self.burns_usage_point)
+        self.burns_consent_to_sister.usage_points.append(
+            ConsentUsagePoint(usage_point=self.burns_usage_point, comment="Reactor #1")
+        )
         self.session.add(self.burns_consent_to_sister)
 
         self.sister.consents.append(self.burns_consent_to_sister)
@@ -274,7 +285,10 @@ class TestDbConsents(unittest.TestCase):
         )
         self.session.add(call)
 
-        self.homer_consent_to_alice.usage_points.remove(self.homer_usage_point)
+        consent_usage_point = self.session.query(ConsentUsagePoint).get(
+            (self.homer_consent_to_alice.id, self.homer_usage_point.id)
+        )
+        self.homer_consent_to_alice.usage_points.remove(consent_usage_point)
 
         with self.assertRaises(IntegrityError):
             self.session.commit()

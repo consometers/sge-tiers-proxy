@@ -16,14 +16,15 @@ CREATE TABLE consents (
 );
 
 CREATE TABLE consents_usage_points (
-    consent_id INT REFERENCES consents (id),
-    usage_point_id usage_point_id REFERENCES usage_points (id),
+    consent_id INT REFERENCES consents (id) NOT NULL,
+    usage_point_id usage_point_id REFERENCES usage_points (id) NOT NULL,
+    comment TEXT,
     PRIMARY KEY (consent_id, usage_point_id)
 );
 
 CREATE TABLE consents_users (
-    consent_id INT REFERENCES consents (id),
-    user_id bare_jid REFERENCES users (bare_jid),
+    consent_id INT REFERENCES consents (id) NOT NULL,
+    user_id bare_jid REFERENCES users (bare_jid) NOT NULL,
     PRIMARY KEY (consent_id, user_id)
 );
 

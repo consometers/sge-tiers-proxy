@@ -74,12 +74,15 @@ class Migration(Base):
                 raise RuntimeError("Unexpected deployed version after migration")
 
 
-consents_usage_points_association = Table(
-    "consents_usage_points",
-    Base.metadata,
-    Column("consent_id", ForeignKey("consents.id"), primary_key=True),
-    Column("usage_point_id", ForeignKey("usage_points.id"), primary_key=True),
-)
+class ConsentUsagePoint(Base):
+    __tablename__ = "consents_usage_points"
+
+    consent_id = Column(ForeignKey("consents.id"), primary_key=True)
+    usage_point_id = Column(ForeignKey("usage_points.id"), primary_key=True)
+    comment = Column(Text)
+
+    usage_point = relationship("UsagePoint")
+
 
 consents_users_association = Table(
     "consents_users",
@@ -113,9 +116,8 @@ class User(Base):
             .join(consents_users_association)
             .join(User)
             .filter(consents_users_association.c.user_id == self.bare_jid)
-            .join(consents_usage_points_association)
-            .join(UsagePoint)
-            .filter(consents_usage_points_association.c.usage_point_id == usage_point)
+            .join(ConsentUsagePoint)
+            .filter(ConsentUsagePoint.usage_point_id == usage_point)
         )
 
         if query.limit(1).count() == 0:
@@ -143,12 +145,6 @@ class UsagePoint(Base):
 
     id = Column(String(14), primary_key=True)
 
-    consents = relationship(
-        "Consent",
-        secondary=consents_usage_points_association,
-        back_populates="usage_points",
-    )
-
     webservices_calls = relationship("WebservicesCall", back_populates="usage_point")
 
     def __repr__(self):
@@ -165,11 +161,7 @@ class Consent(Base):
     expires_at = Column(DateTime)
     created_at = Column(DateTime, default=dt.datetime.now())
 
-    usage_points = relationship(
-        "UsagePoint",
-        secondary=consents_usage_points_association,
-        back_populates="consents",
-    )
+    usage_points = relationship("ConsentUsagePoint", cascade="all, delete-orphan")
 
     users = relationship(
         "User", secondary=consents_users_association, back_populates="consents"
