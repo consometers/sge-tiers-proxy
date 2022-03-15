@@ -8,7 +8,7 @@ Data can be accessed with the [quoalise](https://github.com/consometers/quoalise
 
 ## Available data
 
-### Load Curves
+### Load Curves history
 
 - `urn:dev:prm:<PRM>_consumption/active_power/raw`
 - `urn:dev:prm:<PRM>_consumption/active_power/corrected`
@@ -31,7 +31,17 @@ Limitations:
 
 - Trottled to one request per second
 - Maximum 7 days requested at once
-- Oldest data 36 months ago
+- Oldest data 36 months ago, limited by the latest commissioning
+
+### Daily energy history
+
+- `urn:dev:prm:<PRM>_consumption/energy/daily`
+- `urn:dev:prm:<PRM>_production/energy/daily`
+
+Limitations:
+
+- Available for Linky devices only (C5 and P4 segments)
+- Oldest data 36 months ago, limited by the latest commissioning
 
 ## Contributing
 

@@ -138,6 +138,60 @@ class DetailedMeasurements:
                 }
             },
         },
+        # Productions globales quotidiennes
+        # C5
+        "consumption/energy/daily": {
+            "params": {
+                "initiateurLogin": None,
+                "pointId": None,
+                "mesuresTypeCode": "ENERGIE",
+                "grandeurPhysique": "EA",
+                "soutirage": "true",
+                "injection": "false",
+                "dateDebut": None,
+                "dateFin": None,
+                "mesuresCorrigees": "false",
+                "accordClient": "true",
+            },
+            "availability": ["P4"],
+            "metadata": {
+                "measurement": {
+                    "name": "energy",
+                    "direction": "production",
+                    "unit": "Wh",
+                    "aggregation": "sum",
+                    "corrected": "false",
+                    "sampling-interval": "P1D",
+                }
+            },
+        },
+        # Productions globales quotidiennes
+        # P4
+        "production/energy/daily": {
+            "params": {
+                "initiateurLogin": None,
+                "pointId": None,
+                "mesuresTypeCode": "ENERGIE",
+                "grandeurPhysique": "EA",
+                "soutirage": "false",
+                "injection": "true",
+                "dateDebut": None,
+                "dateFin": None,
+                "mesuresCorrigees": "false",
+                "accordClient": "true",
+            },
+            "availability": ["P4"],
+            "metadata": {
+                "measurement": {
+                    "name": "energy",
+                    "direction": "production",
+                    "unit": "Wh",
+                    "aggregation": "sum",
+                    "corrected": "false",
+                    "sampling-interval": "P1D",
+                }
+            },
+        },
     }
 
     def __init__(self, credentials):
@@ -234,23 +288,27 @@ class DetailedMeasurements:
         assert resp.grandeur[0].unite == measurement_meta.attrib["unit"]
 
         first = True
-        measurement_meta.attrib["sampling-interval"] = resp.grandeur[0].mesure[0].p
+        if "sampling-interval" not in measurement_meta.attrib:
+            measurement_meta.attrib["sampling-interval"] = resp.grandeur[0].mesure[0].p
 
         m = re.match(r"^PT(\d+)M$", measurement_meta.attrib["sampling-interval"])
-        if not m:
+        if m:
+            time_offset = int(m.group(1)) * 60
+        elif measurement_meta.attrib["sampling-interval"] == "P1D":
+            time_offset = 24 * 60 * 60
+        else:
             raise SgeError(
                 "Unexpected time period: "
                 + measurement_meta.attrib["sampling-interval"]
             )
-
-        time_offset = int(m.group(1)) * 60
 
         first = True
         bt = None
         for measurement in resp.grandeur[0].mesure:
             v = str(measurement.v)
             t = int(measurement.d.astimezone(pytz.utc).timestamp()) - time_offset
-            assert measurement.p == measurement_meta.attrib["sampling-interval"]
+            if "p" in dir(measurement):
+                assert measurement.p == measurement_meta.attrib["sampling-interval"]
             if first:
                 bt = t
                 senml = ET.Element(

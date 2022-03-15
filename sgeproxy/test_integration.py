@@ -52,12 +52,26 @@ class TestGetMeasurement(unittest.TestCase):
         measurements = self.client.get_records(measurement, start_date, end_date)
         print(measurements)
 
+    def test_get_authorized_consumption_daily_energy(self):
+        measurement = f"urn:dev:prm:{self.usage_point['id']}_consumption/energy/daily"
+        end_date = dt.date.today() - dt.timedelta(days=1)
+        start_date = end_date - dt.timedelta(days=30)
+        measurements = self.client.get_records(measurement, start_date, end_date)
+        print(measurements)
+
     def test_get_authorized_production_active_power(self):
         measurement = (
             f"urn:dev:prm:{self.usage_point['id']}_production/active_power/raw"
         )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
+        measurements = self.client.get_records(measurement, start_date, end_date)
+        print(measurements)
+
+    def test_get_authorized_production_daily_energy(self):
+        measurement = f"urn:dev:prm:{self.usage_point['id']}_production/energy/daily"
+        end_date = dt.date.today() - dt.timedelta(days=1)
+        start_date = end_date - dt.timedelta(days=30)
         measurements = self.client.get_records(measurement, start_date, end_date)
         print(measurements)
 
