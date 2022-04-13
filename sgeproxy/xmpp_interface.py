@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 import re
 
 from sgeproxy.sge import SgeError
-from sgeproxy.db import User, WebservicesCall, WebservicesCallStatus
+from sgeproxy.db import User, WebservicesCall, WebservicesCallStatus, now_local
 import quoalise
 
 
@@ -112,7 +112,7 @@ class GetMeasurements:
                 )
 
             try:
-                call_date = dt.datetime.now()
+                call_date = now_local()
                 consent = user.consent_for(db, usage_point_id, call_date)
 
                 call = WebservicesCall(

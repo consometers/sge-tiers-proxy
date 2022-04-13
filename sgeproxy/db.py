@@ -15,6 +15,7 @@ from sqlalchemy import (
     Column,
     ForeignKey,
     ForeignKeyConstraint,
+    TypeDecorator,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -23,11 +24,35 @@ from sqlalchemy.sql import text
 Base: Any = declarative_base()
 
 
+def date_local(year, month, day):
+    return dt.datetime(year, month, day, tzinfo=dt.timezone.utc).astimezone()
+
+
+def now_local():
+    return dt.datetime.now(dt.timezone.utc).astimezone()
+
+
+class TZDateTime(TypeDecorator):
+    """
+    Ensures date fields are stored with their timezone to avoid errors.
+    Postgresql will keep those with TIMESTAMP WITH TIME ZONE fields.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            if not value.tzinfo:
+                raise TypeError("tzinfo is required")
+        return value
+
+
 class Migration(Base):
     __tablename__ = "migrations"
 
     version = Column(Integer, primary_key=True)
-    applied_at = Column(DateTime)
+    applied_at = Column(TZDateTime)
 
     def __repr__(self):
         return f"<Migration(version='{self.version}')>"
@@ -158,9 +183,9 @@ class Consent(Base):
     id = Column(Integer, primary_key=True)
     issuer_name = Column(Text)
     issuer_type = Column(String())
-    begins_at = Column(DateTime)
-    expires_at = Column(DateTime)
-    created_at = Column(DateTime, default=dt.datetime.now())
+    begins_at = Column(TZDateTime)
+    expires_at = Column(TZDateTime)
+    created_at = Column(TZDateTime, default=now_local())
 
     usage_points = relationship("ConsentUsagePoint", cascade="all, delete-orphan")
 
@@ -187,9 +212,9 @@ class WebservicesCall(Base):
     usage_point_id = Column(String(14), ForeignKey("usage_points.id"))
     user_id = Column(String(2049), ForeignKey("users.bare_jid"))
     consent_id = Column(Integer)
-    consent_begins_at = Column(DateTime)
-    consent_expires_at = Column(DateTime)
-    called_at = Column(DateTime, default=dt.datetime.now())
+    consent_begins_at = Column(TZDateTime)
+    consent_expires_at = Column(TZDateTime)
+    called_at = Column(TZDateTime, default=now_local())
 
     status = Column(Enum(WebservicesCallStatus))
     error = Column(Text)

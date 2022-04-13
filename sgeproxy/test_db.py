@@ -1,7 +1,7 @@
 import unittest
 
 from sqlalchemy import create_engine
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import sessionmaker
 from sgeproxy.db import (
     Migration,
@@ -10,6 +10,7 @@ from sgeproxy.db import (
     Consent,
     WebservicesCall,
     ConsentUsagePoint,
+    date_local,
 )
 
 import datetime as dt
@@ -47,6 +48,22 @@ class TestDbMigrations(unittest.TestCase):
             latest_version, _ = Migration.files()[-1]
             self.assertEqual(latest_version, Migration.deployed_version(con))
 
+    def test_timestamps_are_not_naive(self):
+        for _, file in Migration.files():
+            with open(file, "r") as f:
+                sql = f.read()
+                sql = sql.upper()
+                sql = " ".join(sql.split())
+                start = 0
+                expected_seq = " TIMESTAMP WITH TIME ZONE"
+                while True:
+                    start = sql.find(" TIMESTAMP", start)
+                    if start < 0:
+                        break
+                    found_seq = sql[start : start + len(expected_seq)]
+                    self.assertEqual(expected_seq, found_seq)
+                    start += len(expected_seq)
+
 
 class TestDbConsents(unittest.TestCase):
     def setUp(self):
@@ -75,8 +92,8 @@ class TestDbConsents(unittest.TestCase):
         self.homer_consent_to_alice = Consent(
             issuer_name="Simpson",
             issuer_type="male",
-            begins_at=dt.datetime(2020, 1, 1),
-            expires_at=dt.datetime(2021, 1, 1),
+            begins_at=date_local(2020, 1, 1),
+            expires_at=date_local(2021, 1, 1),
         )
         self.homer_consent_to_alice.usage_points.append(
             ConsentUsagePoint(usage_point=self.homer_usage_point, comment="Home")
@@ -97,8 +114,8 @@ class TestDbConsents(unittest.TestCase):
         self.burns_consent_to_sister = Consent(
             issuer_name="The Springfield Nuclear Power Plant",
             issuer_type="company",
-            begins_at=dt.datetime(2020, 1, 1),
-            expires_at=dt.datetime(2021, 3, 1),
+            begins_at=date_local(2020, 1, 1),
+            expires_at=date_local(2021, 3, 1),
         )
         self.burns_consent_to_sister.usage_points.append(
             ConsentUsagePoint(usage_point=self.burns_usage_point, comment="Reactor #1")
@@ -112,6 +129,17 @@ class TestDbConsents(unittest.TestCase):
     def tearDown(self):
         self.session.close()
 
+    def test_naive_datetimes_are_not_allowed(self):
+        consent = Consent(
+            issuer_name="Simpson",
+            issuer_type="male",
+            begins_at=dt.datetime.now(),
+            expires_at=dt.datetime.now() + dt.timedelta(days=30),
+        )
+        self.session.add(consent)
+        with self.assertRaises(StatementError):
+            self.session.commit()
+
     def test_db_allows_call_within_consent_scope(self):
 
         WebservicesCall(
@@ -119,7 +147,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
 
         self.session.commit()
@@ -131,7 +159,7 @@ class TestDbConsents(unittest.TestCase):
             consent=None,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
 
         with self.assertRaises(IntegrityError):
@@ -146,7 +174,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
 
         with self.assertRaises(IntegrityError) as context:
@@ -163,7 +191,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
 
         with self.assertRaises(IntegrityError):
@@ -179,7 +207,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.burns_consent_to_sister,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
 
         with self.assertRaises(IntegrityError) as context:
@@ -195,7 +223,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.burns_consent_to_sister,
             user=None,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
 
         with self.assertRaises(IntegrityError):
@@ -211,7 +239,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2019, 1, 2),
+            called_at=date_local(2019, 1, 2),
         )
 
         with self.assertRaises(IntegrityError) as context:
@@ -229,7 +257,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2022, 1, 2),
+            called_at=date_local(2022, 1, 2),
         )
 
         with self.assertRaises(IntegrityError) as context:
@@ -262,7 +290,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
         self.session.add(call)
 
@@ -287,7 +315,7 @@ class TestDbConsents(unittest.TestCase):
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
         self.session.add(call)
 
@@ -310,11 +338,11 @@ class TestDbConsents(unittest.TestCase):
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
-            called_at=dt.datetime(2020, 1, 2),
+            called_at=date_local(2020, 1, 2),
         )
         self.session.add(call)
 
-        self.homer_consent_to_alice.begins_at = dt.datetime(2020, 1, 3)
+        self.homer_consent_to_alice.begins_at = date_local(2020, 1, 3)
 
         with self.assertRaises(IntegrityError):
             self.session.commit()
@@ -322,12 +350,12 @@ class TestDbConsents(unittest.TestCase):
     def test_db_find_consents(self):
 
         consent = self.alice.consent_for(
-            self.session, self.homer_usage_point, dt.datetime(2020, 1, 3)
+            self.session, self.homer_usage_point, date_local(2020, 1, 3)
         )
         self.assertEqual(consent, self.homer_consent_to_alice)
 
         consent = self.sister.consent_for(
-            self.session, self.burns_usage_point, dt.datetime(2020, 1, 3)
+            self.session, self.burns_usage_point, date_local(2020, 1, 3)
         )
         self.assertEqual(consent, self.burns_consent_to_sister)
 
@@ -335,17 +363,17 @@ class TestDbConsents(unittest.TestCase):
 
         with self.assertRaises(PermissionError) as context:
             self.alice.consent_for(
-                self.session, self.burns_usage_point, dt.datetime(2020, 1, 3)
+                self.session, self.burns_usage_point, date_local(2020, 1, 3)
             )
 
         with self.assertRaises(PermissionError) as context:
             self.sister.consent_for(
-                self.session, self.homer_usage_point, dt.datetime(2020, 1, 3)
+                self.session, self.homer_usage_point, date_local(2020, 1, 3)
             )
 
         with self.assertRaises(PermissionError) as context:
             self.sister.consent_for(
-                self.session, "00000000000000", dt.datetime(2020, 1, 3)
+                self.session, "00000000000000", date_local(2020, 1, 3)
             )
 
         self.assertTrue("No consent registered for" in str(context.exception))
@@ -354,12 +382,12 @@ class TestDbConsents(unittest.TestCase):
 
         with self.assertRaises(PermissionError) as context:
             self.alice.consent_for(
-                self.session, self.homer_usage_point, dt.datetime(2019, 12, 31)
+                self.session, self.homer_usage_point, date_local(2019, 12, 31)
             )
 
         with self.assertRaises(PermissionError) as context:
             self.sister.consent_for(
-                self.session, self.burns_usage_point, dt.datetime(2019, 12, 31)
+                self.session, self.burns_usage_point, date_local(2019, 12, 31)
             )
 
         self.assertTrue("is not valid yet" in str(context.exception))
@@ -368,12 +396,12 @@ class TestDbConsents(unittest.TestCase):
 
         with self.assertRaises(PermissionError) as context:
             self.alice.consent_for(
-                self.session, self.homer_usage_point, dt.datetime(2021, 1, 1)
+                self.session, self.homer_usage_point, date_local(2021, 1, 1)
             )
 
         with self.assertRaises(PermissionError) as context:
             self.sister.consent_for(
-                self.session, self.burns_usage_point, dt.datetime(2021, 3, 1)
+                self.session, self.burns_usage_point, date_local(2021, 3, 1)
             )
 
         self.assertTrue("is no longer valid" in str(context.exception))
