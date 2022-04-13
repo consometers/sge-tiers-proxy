@@ -14,12 +14,18 @@ from sgeproxy.db import (
 
 import datetime as dt
 
+# Database and access rights need to be initialized before running tests:
+# sudo -u postgres psql
 # CREATE DATABASE sgeproxy_test;
-# CREATE USER sgeproxy_test WITH ENCRYPTED PASSWORD 'S77RiVz6FVyJhbzb';
+# CREATE USER sgeproxy_test WITH ENCRYPTED PASSWORD 'password';
 # GRANT ALL PRIVILEGES ON DATABASE sgeproxy_test TO sgeproxy_test;
+# \c sgeproxy_test
 # ALTER SCHEMA public OWNER TO sgeproxy_test;
+# \q
 
-DB_URL = "postgresql://sgeproxy_test:S77RiVz6FVyJhbzb@127.0.0.1:5433/sgeproxy_test"
+
+class Args:
+    db_url = None
 
 
 class TestDbMigrations(unittest.TestCase):
@@ -29,7 +35,7 @@ class TestDbMigrations(unittest.TestCase):
         setting the current state (version) correctly.
         """
 
-        engine = create_engine(DB_URL)
+        engine = create_engine(Args.db_url)
 
         with engine.connect() as con:
 
@@ -45,7 +51,7 @@ class TestDbMigrations(unittest.TestCase):
 class TestDbConsents(unittest.TestCase):
     def setUp(self):
 
-        engine = create_engine(DB_URL)
+        engine = create_engine(Args.db_url)
 
         with engine.connect() as con:
 
@@ -381,8 +387,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument(
+        "db_url",
+        help="postgresql://sgeproxy_test:password@127.0.0.1:5432/sgeproxy_test",
+    )
     args, unittest_args = parser.parse_known_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
+    Args.db_url = args.db_url
 
     unittest.main(argv=[sys.argv[0]] + unittest_args)
