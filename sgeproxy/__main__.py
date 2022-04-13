@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+from typing import List
 
 import slixmpp
 from sqlalchemy import create_engine
@@ -68,12 +69,12 @@ if __name__ == "__main__":
     import logging.handlers
 
     logging.basicConfig()
-    debug = []
+    debug: List[str] = []
 
     debug.append("slixmpp")
 
-    for logger in debug:
-        logger = logging.getLogger(logger)
+    for logger_name in debug:
+        logger = logging.getLogger(logger_name)
         logger.setLevel(logging.DEBUG)
         logger.propagate = True
 
@@ -100,7 +101,7 @@ if __name__ == "__main__":
         when="W0",
         interval=1,
         backupCount=0,
-        atTime=dt.time.min,
+        atTime=dt.datetime.min,
     )
     file.setLevel(logging.INFO)
     file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))

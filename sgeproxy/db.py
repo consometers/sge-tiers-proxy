@@ -3,6 +3,7 @@ import re
 import enum
 import glob
 import datetime as dt
+from typing import Any
 
 from sqlalchemy import (
     Integer,
@@ -19,7 +20,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import text
 
-Base = declarative_base()
+Base: Any = declarative_base()
 
 
 class Migration(Base):
@@ -197,7 +198,7 @@ class WebservicesCall(Base):
     usage_point = relationship("UsagePoint", back_populates="webservices_calls")
     consent = relationship("Consent", back_populates="webservices_calls")
 
-    __table_args__ = (
+    __table_args__: Any = (
         ForeignKeyConstraint(
             ["consent_id", "consent_begins_at", "consent_expires_at"],
             ["consents.id", "consents.begins_at", "consents.expires_at"],
