@@ -18,7 +18,7 @@ from sqlalchemy import (
     TypeDecorator,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Session
 from sqlalchemy.sql import text
 
 Base: Any = declarative_base()
@@ -129,10 +129,13 @@ class User(Base):
 
     webservices_calls = relationship("WebservicesCall", back_populates="user")
 
+    subscriptions = relationship("Subscription", back_populates="user")
+
     def __repr__(self):
         return f"<User(bare_jid='{self.bare_jid}')>"
 
-    def consent_for(self, session, usage_point, call_date=dt.datetime.now()):
+    # TODO(cyril) get session from object
+    def consent_for(self, session, usage_point, call_date=now_local()):
 
         if type(usage_point) == UsagePoint:
             usage_point = usage_point.id
@@ -173,6 +176,8 @@ class UsagePoint(Base):
 
     webservices_calls = relationship("WebservicesCall", back_populates="usage_point")
 
+    subscriptions = relationship("Subscription", back_populates="usage_point")
+
     def __repr__(self):
         return f"<UsagePoint(id='{self.id}')>"
 
@@ -194,6 +199,8 @@ class Consent(Base):
     )
 
     webservices_calls = relationship("WebservicesCall", back_populates="consent")
+
+    subscriptions = relationship("Subscription", back_populates="consent")
 
     def __repr__(self):
         return f"<Authorization(id='{self.id}', issuer_name='{self.issuer_name}')>"
@@ -233,3 +240,61 @@ class WebservicesCall(Base):
 
     def register(self, webservice, user_id, usage_point_id, date_from, date_to):
         pass
+
+
+class SubscriptionStatus(enum.Enum):
+    OK = "OK"
+    FAILED = "FAILED"
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(2049), ForeignKey("users.bare_jid"))
+    series_name = Column(Text)
+    subscribed_at = Column(TZDateTime)
+    notified_at = Column(TZDateTime)
+
+    usage_point_id = Column(String(14), ForeignKey("usage_points.id"))
+    consent_id = Column(Integer)
+    consent_begins_at = Column(TZDateTime)
+    consent_expires_at = Column(TZDateTime)
+
+    status = Column(Enum(SubscriptionStatus))
+    error = Column(Text)
+
+    user = relationship("User", back_populates="subscriptions")
+    usage_point = relationship("UsagePoint", back_populates="subscriptions")
+    consent = relationship("Consent", back_populates="subscriptions")
+
+    __table_args__: Any = (
+        ForeignKeyConstraint(
+            ["consent_id", "consent_begins_at", "consent_expires_at"],
+            ["consents.id", "consents.begins_at", "consents.expires_at"],
+        ),
+        {},
+    )
+
+    def notification_checks(self, notified_at=now_local()):
+        return SubscriptionNotificationContext(self, notified_at)
+
+
+class SubscriptionNotificationContext:
+    def __init__(self, subscription, notified_at):
+        self.date = notified_at
+        self.sub = subscription
+        self.session = Session.object_session(self.sub)
+
+    def __enter__(self):
+        self.sub.status = None
+        self.sub.notified_at = self.date
+        self.session.commit()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.sub.status = SubscriptionStatus.OK
+        else:
+            self.sub.status = SubscriptionStatus.FAILED
+        self.session.commit()

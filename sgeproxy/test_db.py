@@ -5,11 +5,13 @@ from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import sessionmaker
 from sgeproxy.db import (
     Migration,
+    SubscriptionStatus,
     User,
     UsagePoint,
     Consent,
     WebservicesCall,
     ConsentUsagePoint,
+    Subscription,
     date_local,
 )
 
@@ -405,6 +407,133 @@ class TestDbConsents(unittest.TestCase):
             )
 
         self.assertTrue("is no longer valid" in str(context.exception))
+
+    def test_db_can_subscribe_when_conscent_is_valid(self):
+
+        subscription = Subscription(
+            user=self.alice,
+            usage_point=self.homer_usage_point,
+            series_name="consumption/energy/index",
+            subscribed_at=date_local(2020, 2, 1),
+            consent=self.alice.consent_for(
+                self.session, self.homer_usage_point, date_local(2020, 2, 1)
+            ),
+        )
+
+        self.session.add(subscription)
+        self.session.commit()
+
+    def test_db_can_notify_when_conscent_is_valid(self):
+
+        subscription = Subscription(
+            user=self.alice,
+            usage_point=self.homer_usage_point,
+            series_name="consumption/energy/index",
+            subscribed_at=date_local(2020, 2, 1),
+            consent=self.alice.consent_for(
+                self.session, self.homer_usage_point, date_local(2020, 2, 1)
+            ),
+        )
+
+        self.session.add(subscription)
+        self.session.commit()
+
+        with subscription.notification_checks(notified_at=date_local(2020, 2, 1)):
+            pass  # Notify the client sucessfully
+
+        self.assertEqual(subscription.status, SubscriptionStatus.OK)
+        self.assertEqual(subscription.notified_at, date_local(2020, 2, 1))
+
+    def test_db_notification_failure(self):
+
+        subscription = Subscription(
+            user=self.alice,
+            usage_point=self.homer_usage_point,
+            series_name="consumption/energy/index",
+            subscribed_at=date_local(2020, 2, 1),
+            consent=self.alice.consent_for(
+                self.session, self.homer_usage_point, date_local(2020, 2, 1)
+            ),
+        )
+
+        self.session.add(subscription)
+        self.session.commit()
+
+        try:
+            with subscription.notification_checks(notified_at=date_local(2020, 2, 1)):
+                raise RuntimeError("Something happens")
+        except RuntimeError:
+            pass
+
+        self.assertEqual(subscription.status, SubscriptionStatus.FAILED)
+        self.assertEqual(subscription.notified_at, date_local(2020, 2, 1))
+
+    def test_db_cannot_notify_subscriber_when_consent_is_no_longer_valid(self):
+
+        subscription = Subscription(
+            user=self.alice,
+            usage_point=self.homer_usage_point,
+            series_name="consumption/energy/index",
+            subscribed_at=date_local(2020, 2, 1),
+            consent=self.alice.consent_for(
+                self.session, self.homer_usage_point, date_local(2020, 2, 1)
+            ),
+        )
+
+        self.session.add(subscription)
+        self.session.commit()
+
+        # User is supposed to set notification date before sending it,
+        # using the database constraints to check consent validity
+        subscription.status = None
+        subscription.notified_at = date_local(2022, 2, 1)
+
+        with self.assertRaises(IntegrityError):
+            self.session.commit()
+
+    def test_db_can_subscribe_cannot_use_an_urelated_consent(self):
+
+        subscription = Subscription(
+            user=self.alice,
+            usage_point=self.homer_usage_point,
+            series_name="consumption/energy/index",
+            subscribed_at=date_local(2020, 2, 1),
+            consent=self.sister.consent_for(
+                self.session, self.burns_usage_point, date_local(2020, 2, 1)
+            ),
+        )
+
+        self.session.add(subscription)
+
+        with self.assertRaises(IntegrityError):
+            self.session.commit()
+
+    def test_db_cannot_subscribe_multiple_time_to_same_series(self):
+
+        subscription = Subscription(
+            user=self.alice,
+            usage_point=self.homer_usage_point,
+            series_name="consumption/energy/index",
+            subscribed_at=date_local(2020, 2, 1),
+            consent=self.alice.consent_for(
+                self.session, self.homer_usage_point, date_local(2020, 2, 1)
+            ),
+        )
+
+        self.session.add(subscription)
+
+        subscription = Subscription(
+            user=self.alice,
+            usage_point=self.homer_usage_point,
+            series_name="consumption/energy/index",
+            subscribed_at=date_local(2020, 2, 1),
+            consent=self.alice.consent_for(
+                self.session, self.homer_usage_point, date_local(2020, 2, 1)
+            ),
+        )
+
+        with self.assertRaises(IntegrityError):
+            self.session.commit()
 
 
 if __name__ == "__main__":
