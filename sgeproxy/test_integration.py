@@ -40,10 +40,9 @@ class TestGetMeasurement(unittest.TestCase):
     def tearDown(self):
         self.client.disconnect()
 
+    # TODO xmpp user not in database
     # def test_unauthorized_xmpp_user(self):
     #     pass
-
-    # test_accesses_are_logged
 
     def test_get_authorized_consumption_power_active(self):
         measurement = (
@@ -99,6 +98,13 @@ class TestGetMeasurement(unittest.TestCase):
             self.client.get_records(self.proxy, measurement, start_date, end_date)
 
         self.assertTrue(self.usage_point["id"] in str(context.exception))
+
+    def test_get_unexisting_resource(self):
+        measurement = f"urn:dev:prm:{self.usage_point['id']}_does/not/exists"
+        end_date = dt.date.today() - dt.timedelta(days=1)
+        start_date = end_date - dt.timedelta(days=6)
+        with self.assertRaises(quoalise.BadRequest):
+            self.client.get_records(self.proxy, measurement, start_date, end_date)
 
 
 if __name__ == "__main__":

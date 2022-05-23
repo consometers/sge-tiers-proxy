@@ -92,11 +92,11 @@ class GetMeasurements:
 
         m = re.match(r"^urn:dev:prm:(\d{14})_(.*)$", identifier)
         if not m:
-            return fail_with(
-                (
-                    "Unexpected measurement identifer "
-                    + f"('{identifier}', should be like '{self.SAMPLE_IDENTIFIER}')"
-                )
+            raise XMPPError(
+                condition="bad-request",
+                etype="modify",
+                text="Unexpected record identifer "
+                + f"('{identifier}', should be like '{self.SAMPLE_IDENTIFIER}')",
             )
 
         usage_point_id = m.group(1)
@@ -136,6 +136,13 @@ class GetMeasurements:
                 call.status = WebservicesCallStatus.FAILED
                 call.error = e.code
                 return fail_with(e.message, e.code)
+            except ValueError as e:
+                raise XMPPError(
+                    condition="bad-request",
+                    etype="modify",
+                    text=str(e),
+                )
+
             finally:
                 db.commit()
 
