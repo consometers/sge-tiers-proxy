@@ -53,11 +53,11 @@ async def main(conf, sge_credentials):
 
     xmpp_client.send_presence()
 
-    handler = sgeproxy.xmpp_interface.GetMeasurements(
+    handler = sgeproxy.xmpp_interface.GetHistory(
         xmpp_client, db_session_maker, detailed_measurements.get_measurements
     )
     xmpp_client["xep_0050"].add_command(
-        node="get_records", name="Get records", handler=handler.handle_request
+        node="get_history", name="Get history", handler=handler.handle_request
     )
 
 

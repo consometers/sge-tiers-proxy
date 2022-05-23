@@ -30,7 +30,7 @@ def fail_with(message, code):
     )
 
 
-class GetMeasurements:
+class GetHistory:
 
     SAMPLE_IDENTIFIER = "urn:dev:prm:00000000000000_consumption/power/active/raw"
 
@@ -44,9 +44,7 @@ class GetMeasurements:
         if iq["command"].xml:  # has subelements
             return self.handle_submit(session["payload"], session)
 
-        form = self.xmpp_client["xep_0004"].make_form(
-            ftype="form", title="Get measurements"
-        )
+        form = self.xmpp_client["xep_0004"].make_form(ftype="form", title="Get history")
 
         form.addField(
             var="identifier",
@@ -147,7 +145,7 @@ class GetMeasurements:
                 db.commit()
 
         form = self.xmpp_client["xep_0004"].make_form(
-            ftype="result", title="Get measurements"
+            ftype="result", title="Get history"
         )
 
         form.addField(

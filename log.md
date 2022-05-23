@@ -4,7 +4,7 @@ Client:
 
 ```xml
 <iq xml:lang="en" to="…" from="…" type="set" id="f897d">
-  <command xmlns="http://jabber.org/protocol/commands" node="get_records" action="execute">
+  <command xmlns="http://jabber.org/protocol/commands" node="get_history" action="execute">
     <x xmlns="jabber:x:data" type="submit">
       <field var="identifier" type="text-single">
         <value>urn:dev:prm:30001610071843_consumption/power/active/raw</value>
@@ -24,9 +24,9 @@ Serveur
 
 ```xml
 <iq xml:lang="en" to="…" type="result" id="f897d">
-  <command xmlns="http://jabber.org/protocol/commands" node="get_records" status="completed">
+  <command xmlns="http://jabber.org/protocol/commands" node="get_history" status="completed">
     <x xmlns="jabber:x:data" type="result">
-      <title>Get measurements</title>
+      <title>Get history</title>
       <field var="result" type="fixed" label="Get urn:dev:prm:30001610071843_consumption/power/active/raw">
         <value>Success</value>
       </field>

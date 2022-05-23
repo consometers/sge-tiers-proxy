@@ -50,7 +50,7 @@ class TestGetMeasurement(unittest.TestCase):
         )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
-        measurements = self.client.get_records(
+        measurements = self.client.get_history(
             self.proxy, measurement, start_date, end_date
         )
         print(measurements)
@@ -61,7 +61,7 @@ class TestGetMeasurement(unittest.TestCase):
         )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=30)
-        measurements = self.client.get_records(
+        measurements = self.client.get_history(
             self.proxy, measurement, start_date, end_date
         )
         print(measurements)
@@ -72,7 +72,7 @@ class TestGetMeasurement(unittest.TestCase):
         )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
-        measurements = self.client.get_records(
+        measurements = self.client.get_history(
             self.proxy, measurement, start_date, end_date
         )
         print(measurements)
@@ -83,7 +83,7 @@ class TestGetMeasurement(unittest.TestCase):
         )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=30)
-        measurements = self.client.get_records(
+        measurements = self.client.get_history(
             self.proxy, measurement, start_date, end_date
         )
         print(measurements)
@@ -95,7 +95,7 @@ class TestGetMeasurement(unittest.TestCase):
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
         with self.assertRaises(quoalise.NotAuthorized) as context:
-            self.client.get_records(self.proxy, measurement, start_date, end_date)
+            self.client.get_history(self.proxy, measurement, start_date, end_date)
 
         self.assertTrue(self.usage_point["id"] in str(context.exception))
 
@@ -104,7 +104,13 @@ class TestGetMeasurement(unittest.TestCase):
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
         with self.assertRaises(quoalise.BadRequest):
-            self.client.get_records(self.proxy, measurement, start_date, end_date)
+            self.client.get_history(self.proxy, measurement, start_date, end_date)
+
+        measurement = "fdoes/not/exists"
+        end_date = dt.date.today() - dt.timedelta(days=1)
+        start_date = end_date - dt.timedelta(days=6)
+        with self.assertRaises(quoalise.BadRequest):
+            self.client.get_history(self.proxy, measurement, start_date, end_date)
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ Mean active power consumed over a period of time (10 min., 30 min., 60 min. depe
 Example:
 
 ```bash
-quoalise get-records sge-proxy@xmpp-provider.io/proxy urn:dev:prm:14411643921305_consumption/power/active/raw --start-date 2021-12-01 --end-date 2021-12-05
+quoalise get-history sge-proxy@xmpp-provider.io/proxy urn:dev:prm:14411643921305_consumption/power/active/raw --start-date 2021-12-01 --end-date 2021-12-05
 ```
 
 First returned value will be 342 W, stamped at 2021-11-30T23:00:00 UTC. Mean consumed power have been 342 W between 00:00 and 00:30 on the 2021-12-01 (french time).
