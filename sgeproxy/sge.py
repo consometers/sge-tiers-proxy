@@ -309,9 +309,11 @@ class DetailedMeasurements:
 
         m = re.match(r"^PT(\d+)M$", measurement_meta.attrib["sampling-interval"])
         if m:
+            # load curve is stamped by SGE API at the end of measurement periods
             time_offset = int(m.group(1)) * 60
         elif measurement_meta.attrib["sampling-interval"] == "P1D":
-            time_offset = 24 * 60 * 60
+            # daily data is stamped at the begining of the day
+            time_offset = 0
         else:
             raise SgeError(
                 "Unexpected time period: "

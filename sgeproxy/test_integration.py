@@ -7,6 +7,7 @@ import quoalise
 import datetime as dt
 import pytz
 from typing import Tuple
+from statistics import mean
 
 CONF_CLIENT = None
 CONF_PROXY = None
@@ -115,6 +116,33 @@ class TestGetMeasurement(unittest.TestCase):
         measurement = "fdoes/not/exists"
         with self.assertRaises(quoalise.BadRequest):
             self.client.get_history(self.proxy, measurement, start_time, end_time)
+
+    def test_load_curve_matches_energy(self):
+        start_time, end_time = previous_days(7)
+        load_curve_data = self.client.get_history(
+            self.proxy,
+            f"urn:dev:prm:{self.usage_point['id']}_consumption/power/active/raw",
+            start_time,
+            end_time,
+        )
+        energy_data = self.client.get_history(
+            self.proxy,
+            f"urn:dev:prm:{self.usage_point['id']}_consumption/energy/active/daily",
+            start_time,
+            end_time,
+        )
+
+        load_curve_records = list(load_curve_data.records)
+        energy_records = list(energy_data.records)
+
+        self.assertGreaterEqual(len(load_curve_records), 1)
+        self.assertGreaterEqual(len(energy_records), 1)
+
+        total_energy_wh = sum([record.value for record in energy_records])
+        mean_power_w = mean([record.value for record in load_curve_records])
+        computed_energy_wh = len(energy_records) * 24 * mean_power_w
+
+        self.assertEqual(computed_energy_wh, total_energy_wh)
 
 
 if __name__ == "__main__":
