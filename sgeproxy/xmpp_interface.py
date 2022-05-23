@@ -2,6 +2,7 @@
 
 import logging
 import datetime as dt
+import pytz
 
 from slixmpp.exceptions import XMPPError
 from sqlalchemy.exc import IntegrityError
@@ -10,7 +11,6 @@ import re
 
 from sgeproxy.sge import SgeError
 from sgeproxy.db import User, WebservicesCall, WebservicesCallStatus, now_local
-import quoalise
 
 
 # TODO convert to QuoaliseException, extending XMPPError
@@ -54,25 +54,27 @@ class GetHistory:
             value=self.SAMPLE_IDENTIFIER,
         )
 
-        end_date = dt.datetime.today()
-        start_date = end_date - dt.timedelta(days=1)
+        end_time = dt.datetime.now(pytz.timezone("Europe/Paris")).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        start_time = end_time - dt.timedelta(days=1)
 
         form.addField(
-            var="start_date",
+            var="start_time",
             ftype="text-single",
             label="Start date",
-            desc=" Au format YYYY-MM-DD",
+            desc="Au format ISO 8601",
             required=True,
-            value=start_date.strftime("%Y-%m-%d"),
+            value=start_time.isoformat(),
         )
 
         form.addField(
-            var="end_date",
+            var="end_time",
             ftype="text-single",
             label="End date",
-            desc=" Au format YYYY-MM-DD",
+            desc="Au format ISO 8601",
             required=True,
-            value=end_date.strftime("%Y-%m-%d"),
+            value=end_time.isoformat(),
         )
 
         session["payload"] = form
@@ -83,10 +85,10 @@ class GetHistory:
     def handle_submit(self, payload, session):
 
         identifier = payload["values"]["identifier"]
-        start_date = quoalise.parse_iso_date(payload["values"]["start_date"])
-        end_date = quoalise.parse_iso_date(payload["values"]["end_date"])
+        start_time = dt.datetime.fromisoformat(payload["values"]["start_time"])
+        end_time = dt.datetime.fromisoformat(payload["values"]["end_time"])
 
-        logging.info(f"{session['from']} {identifier} {start_date} {end_date}")
+        logging.info(f"{session['from']} {identifier} {start_time} {end_time}")
 
         m = re.match(r"^urn:dev:prm:(\d{14})_(.*)$", identifier)
         if not m:
@@ -127,7 +129,7 @@ class GetHistory:
 
             try:
                 data = self.data_provider(
-                    measurement, usage_point_id, start_date, end_date
+                    measurement, usage_point_id, start_time, end_time
                 )
                 call.status = WebservicesCallStatus.OK
             except SgeError as e:

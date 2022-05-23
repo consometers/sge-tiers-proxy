@@ -5,6 +5,8 @@ import asyncio
 import unittest
 import quoalise
 import datetime as dt
+import pytz
+from typing import Tuple
 
 CONF_CLIENT = None
 CONF_PROXY = None
@@ -12,6 +14,16 @@ CONF_PROXY = None
 
 def parse_iso_date(date_str):
     return dt.datetime.strptime(date_str, "%Y-%m-%d").date()
+
+
+def previous_days(days: int) -> Tuple[dt.datetime, dt.datetime]:
+    paris_tz = pytz.timezone("Europe/Paris")
+    end_time = paris_tz.localize(dt.datetime.now()).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    start_time = paris_tz.normalize(end_time - dt.timedelta(days=days))
+
+    return start_time, end_time
 
 
 class TestGetMeasurement(unittest.TestCase):
@@ -48,69 +60,61 @@ class TestGetMeasurement(unittest.TestCase):
         measurement = (
             f"urn:dev:prm:{self.usage_point['id']}_consumption/power/active/raw"
         )
-        end_date = dt.date.today() - dt.timedelta(days=1)
-        start_date = end_date - dt.timedelta(days=6)
-        measurements = self.client.get_history(
-            self.proxy, measurement, start_date, end_date
-        )
-        print(measurements)
+        start_time, end_time = previous_days(7)
+        data = self.client.get_history(self.proxy, measurement, start_time, end_time)
+        records = list(data.records)
+        self.assertGreaterEqual(len(records), 0)
+        self.assertEqual(records[0].name, measurement)
 
     def test_get_authorized_consumption_energy_daily(self):
         measurement = (
             f"urn:dev:prm:{self.usage_point['id']}_consumption/energy/active/daily"
         )
-        end_date = dt.date.today() - dt.timedelta(days=1)
-        start_date = end_date - dt.timedelta(days=30)
-        measurements = self.client.get_history(
-            self.proxy, measurement, start_date, end_date
-        )
-        print(measurements)
+        start_time, end_time = previous_days(30)
+        data = self.client.get_history(self.proxy, measurement, start_time, end_time)
+        records = list(data.records)
+        self.assertGreaterEqual(len(records), 0)
+        self.assertEqual(records[0].name, measurement)
 
     def test_get_authorized_production_power_active(self):
         measurement = (
             f"urn:dev:prm:{self.usage_point['id']}_production/power/active/raw"
         )
-        end_date = dt.date.today() - dt.timedelta(days=1)
-        start_date = end_date - dt.timedelta(days=6)
-        measurements = self.client.get_history(
-            self.proxy, measurement, start_date, end_date
-        )
-        print(measurements)
+        start_time, end_time = previous_days(7)
+        data = self.client.get_history(self.proxy, measurement, start_time, end_time)
+        records = list(data.records)
+        self.assertGreaterEqual(len(records), 0)
+        self.assertEqual(records[0].name, measurement)
 
     def test_get_authorized_production_energy_daily(self):
         measurement = (
             f"urn:dev:prm:{self.usage_point['id']}_production/energy/active/daily"
         )
-        end_date = dt.date.today() - dt.timedelta(days=1)
-        start_date = end_date - dt.timedelta(days=30)
-        measurements = self.client.get_history(
-            self.proxy, measurement, start_date, end_date
-        )
-        print(measurements)
+        start_time, end_time = previous_days(30)
+        data = self.client.get_history(self.proxy, measurement, start_time, end_time)
+        records = list(data.records)
+        self.assertGreaterEqual(len(records), 0)
+        self.assertEqual(records[0].name, measurement)
 
     def test_get_unauthorized(self):
         measurement = (
             f"urn:dev:prm:{self.usage_point['id']}_consumption/power/active/raw"
         )
-        end_date = dt.date.today() - dt.timedelta(days=1)
-        start_date = end_date - dt.timedelta(days=6)
+        start_time, end_time = previous_days(7)
         with self.assertRaises(quoalise.NotAuthorized) as context:
-            self.client.get_history(self.proxy, measurement, start_date, end_date)
+            self.client.get_history(self.proxy, measurement, start_time, end_time)
 
         self.assertTrue(self.usage_point["id"] in str(context.exception))
 
     def test_get_unexisting_resource(self):
         measurement = f"urn:dev:prm:{self.usage_point['id']}_does/not/exists"
-        end_date = dt.date.today() - dt.timedelta(days=1)
-        start_date = end_date - dt.timedelta(days=6)
+        start_time, end_time = previous_days(7)
         with self.assertRaises(quoalise.BadRequest):
-            self.client.get_history(self.proxy, measurement, start_date, end_date)
+            self.client.get_history(self.proxy, measurement, start_time, end_time)
 
         measurement = "fdoes/not/exists"
-        end_date = dt.date.today() - dt.timedelta(days=1)
-        start_date = end_date - dt.timedelta(days=6)
         with self.assertRaises(quoalise.BadRequest):
-            self.client.get_history(self.proxy, measurement, start_date, end_date)
+            self.client.get_history(self.proxy, measurement, start_time, end_time)
 
 
 if __name__ == "__main__":

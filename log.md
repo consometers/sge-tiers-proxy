@@ -9,11 +9,11 @@ Client:
       <field var="identifier" type="text-single">
         <value>urn:dev:prm:30001610071843_consumption/power/active/raw</value>
       </field>
-      <field var="start_date" type="text-single">
-        <value>2020-03-01</value>
+      <field var="start_time" type="text-single">
+        <value>2020-03-01T00:00:00+01:00</value>
       </field>
-      <field var="end_date" type="text-single">
-        <value>2020-03-08</value>
+      <field var="end_time" type="text-single">
+        <value>2020-03-08T00:00:00+01:00</value>
       </field>
     </x>
   </command>

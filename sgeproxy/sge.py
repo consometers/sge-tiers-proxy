@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import datetime as dt
+from pytz import timezone
+from typing import Any, Dict, Optional, Set
 import suds
 
 import lowatt_enedis
@@ -10,26 +12,41 @@ import lowatt_enedis.services
 import re
 from slixmpp.xmlstream import ElementBase, ET
 import pytz
-import quoalise
+
+import sgeproxy.config
+
+PARIS_TZ = timezone("Europe/Paris")
 
 
 class SgeError(Exception):
-    def __init__(self, message, code=None):
+    def __init__(self, message: str, code: Optional[str] = None) -> None:
         self.message = message
         self.code = code
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.code is not None:
             return f"{self.code}: {self.message}"
         else:
             return self.message
 
 
+class MeasurementApiSpec:
+    def __init__(
+        self,
+        params: Dict[str, Optional[str]],
+        availability: Set[str],
+        metadata: Dict[str, Any],
+    ):
+        self.params = params
+        self.availability = availability
+        self.metadata = metadata
+
+
 class DetailedMeasurements:
 
     # TODO(cyril) ensure Python >= 3.7 to preserve dict order
 
-    MEASUREMENTS = {
+    MEASUREMENTS: Dict[str, MeasurementApiSpec] = {
         # -------------------------
         # Courbes au pas enregistré
         #
@@ -37,8 +54,8 @@ class DetailedMeasurements:
         # à la date du jour, limités à la dernière mise en service.
         #
         # Courbe de puissance active consommée brute
-        "consumption/power/active/raw": {
-            "params": {
+        "consumption/power/active/raw": MeasurementApiSpec(
+            params={
                 "initiateurLogin": None,
                 "pointId": None,
                 "mesuresTypeCode": "COURBE",
@@ -50,8 +67,8 @@ class DetailedMeasurements:
                 "mesuresCorrigees": "false",
                 "accordClient": "true",
             },
-            "availability": ["C1", "C2", "C3", "C4", "C5"],
-            "metadata": {
+            availability={"C1", "C2", "C3", "C4", "C5"},
+            metadata={
                 "measurement": {
                     "name": "active-power",
                     "direction": "consumption",
@@ -61,10 +78,10 @@ class DetailedMeasurements:
                     "aggregation": "mean",
                 }
             },
-        },
+        ),
         # Courbe de puissance active consommée corrigées
-        "consumption/power/active/corrected": {
-            "params": {
+        "consumption/power/active/corrected": MeasurementApiSpec(
+            params={
                 "initiateurLogin": None,
                 "pointId": None,
                 "mesuresTypeCode": "COURBE",
@@ -76,8 +93,8 @@ class DetailedMeasurements:
                 "mesuresCorrigees": "true",
                 "accordClient": "true",
             },
-            "availability": ["C1", "C2", "C3", "C4"],
-            "metadata": {
+            availability={"C1", "C2", "C3", "C4"},
+            metadata={
                 "measurement": {
                     "name": "active-power",
                     "direction": "consumption",
@@ -86,11 +103,11 @@ class DetailedMeasurements:
                     "corrected": "true",
                 }
             },
-        },
+        ),
         # Courbe de puissance active produite brute
         # P1-P4
-        "production/power/active/raw": {
-            "params": {
+        "production/power/active/raw": MeasurementApiSpec(
+            params={
                 "initiateurLogin": None,
                 "pointId": None,
                 "mesuresTypeCode": "COURBE",
@@ -102,8 +119,8 @@ class DetailedMeasurements:
                 "mesuresCorrigees": "false",
                 "accordClient": "true",
             },
-            "availability": ["P1", "P2", "P3", "P4"],
-            "metadata": {
+            availability={"P1", "P2", "P3", "P4"},
+            metadata={
                 "measurement": {
                     "name": "active-power",
                     "direction": "production",
@@ -111,11 +128,11 @@ class DetailedMeasurements:
                     "aggregation": "mean",
                 }
             },
-        },
+        ),
         # Courbe de puissance active produite corrigées
         # P1-P3
-        "production/power/active/corrected": {
-            "params": {
+        "production/power/active/corrected": MeasurementApiSpec(
+            params={
                 "initiateurLogin": None,
                 "pointId": None,
                 "mesuresTypeCode": "COURBE",
@@ -127,8 +144,8 @@ class DetailedMeasurements:
                 "mesuresCorrigees": "true",
                 "accordClient": "true",
             },
-            "availability": ["P1", "P2", "P3"],
-            "metadata": {
+            availability={"P1", "P2", "P3"},
+            metadata={
                 "measurement": {
                     "name": "active-power",
                     "direction": "production",
@@ -137,11 +154,11 @@ class DetailedMeasurements:
                     "corrected": "true",
                 }
             },
-        },
+        ),
         # Productions globales quotidiennes
         # C5
-        "consumption/energy/active/daily": {
-            "params": {
+        "consumption/energy/active/daily": MeasurementApiSpec(
+            params={
                 "initiateurLogin": None,
                 "pointId": None,
                 "mesuresTypeCode": "ENERGIE",
@@ -153,8 +170,8 @@ class DetailedMeasurements:
                 "mesuresCorrigees": "false",
                 "accordClient": "true",
             },
-            "availability": ["P4"],
-            "metadata": {
+            availability={"P4"},
+            metadata={
                 "measurement": {
                     "name": "energy",
                     "direction": "production",
@@ -164,11 +181,11 @@ class DetailedMeasurements:
                     "sampling-interval": "P1D",
                 }
             },
-        },
+        ),
         # Productions globales quotidiennes
         # P4
-        "production/energy/active/daily": {
-            "params": {
+        "production/energy/active/daily": MeasurementApiSpec(
+            params={
                 "initiateurLogin": None,
                 "pointId": None,
                 "mesuresTypeCode": "ENERGIE",
@@ -180,8 +197,8 @@ class DetailedMeasurements:
                 "mesuresCorrigees": "false",
                 "accordClient": "true",
             },
-            "availability": ["P4"],
-            "metadata": {
+            availability={"P4"},
+            metadata={
                 "measurement": {
                     "name": "energy",
                     "direction": "production",
@@ -191,10 +208,10 @@ class DetailedMeasurements:
                     "sampling-interval": "P1D",
                 }
             },
-        },
+        ),
     }
 
-    def __init__(self, credentials):
+    def __init__(self, credentials: sgeproxy.config.File):
 
         self.login = credentials["login"]
         certificate = credentials.abspath(credentials["certificate"])
@@ -206,7 +223,19 @@ class DetailedMeasurements:
         )
 
     # end date included (!= SGE API)
-    def get_measurements(self, name, usage_point_id, start_date, end_date):
+    def get_measurements(
+        self,
+        name: str,
+        usage_point_id: str,
+        start_time: dt.datetime,
+        end_time: dt.datetime,
+    ) -> Any:
+
+        # SGE works with dates, on french timezone
+        # It only allows to get complete days
+        # TODO(cyril) handle times, it is zeroed out for now
+        start_date = start_time.astimezone(PARIS_TZ).date()
+        end_date = end_time.astimezone(PARIS_TZ).date()
 
         measurement = self.MEASUREMENTS.get(name)
 
@@ -218,26 +247,13 @@ class DetailedMeasurements:
                 f"Usage point id {usage_point_id} must consist of 14 digits"
             )
 
-        if not isinstance(start_date, dt.date):
-            raise ValueError(
-                (
-                    f"Start date type should be datetime.date, "
-                    f"not {type(start_date).__name__}"
-                )
-            )
-
-        if not isinstance(end_date, dt.date):
-            raise ValueError(
-                f"End date type should be datetime.date, not {type(end_date).__name__}"
-            )
-
-        demande = measurement["params"].copy()
+        demande = measurement.params.copy()
         demande.update(
             {
                 "initiateurLogin": self.login,
                 "pointId": usage_point_id,
-                "dateDebut": quoalise.format_iso_date(start_date),
-                "dateFin": quoalise.format_iso_date(end_date + dt.timedelta(days=1)),
+                "dateDebut": start_date.isoformat(),
+                "dateFin": end_date.isoformat(),
             }
         )
 
@@ -278,7 +294,7 @@ class DetailedMeasurements:
         )
 
         measurement_meta = ET.Element(
-            "measurement", attrib=measurement["metadata"]["measurement"]
+            "measurement", attrib=measurement.metadata["measurement"]
         )
         meta.append(measurement_meta)
 
@@ -304,11 +320,11 @@ class DetailedMeasurements:
 
         first = True
         bt = None
-        for measurement in resp.grandeur[0].mesure:
-            v = str(measurement.v)
-            t = int(measurement.d.astimezone(pytz.utc).timestamp()) - time_offset
-            if "p" in dir(measurement):
-                assert measurement.p == measurement_meta.attrib["sampling-interval"]
+        for meas in resp.grandeur[0].mesure:
+            v = str(meas.v)
+            t = int(meas.d.astimezone(pytz.utc).timestamp()) - time_offset
+            if "p" in dir(meas):
+                assert meas.p == measurement_meta.attrib["sampling-interval"]
             if first:
                 bt = t
                 senml = ET.Element(
@@ -321,6 +337,7 @@ class DetailedMeasurements:
                 )
                 first = False
             else:
+                assert bt is not None
                 t = t - bt
                 senml = ET.Element("senml", t=str(t), v=str(v))
             sensml.append(senml)
