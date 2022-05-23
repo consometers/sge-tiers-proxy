@@ -58,12 +58,12 @@ class R171:
             if measurement_code == "PMA":
                 name = (
                     base_name
-                    + f"/apparent_power/max/{temporal_class_owner}/{temporal_class}"
+                    + f"/power/apparent/max/{temporal_class_owner}/{temporal_class}"
                 )
             elif measurement_code == "EA":
                 name = (
                     base_name
-                    + f"/active_energy/index/{temporal_class_owner}/{temporal_class}"
+                    + f"/energy/active/index/{temporal_class_owner}/{temporal_class}"
                 )
             else:
                 # Data type not handled
@@ -97,14 +97,14 @@ class R171:
 
                 if time not in computed_records[usage_point]:
                     computed_records[usage_point][time] = {
-                        "power_max": Record(
-                            f"{base_name}/apparent_power/max",
+                        "power/apparent/max": Record(
+                            f"{base_name}/power/apparent/max",
                             time,
                             None,
                             None,
                         ),
-                        "active_energy": Record(
-                            f"{base_name}/active_energy/index",
+                        "energy/active/index": Record(
+                            f"{base_name}/energy/active/index",
                             time,
                             None,
                             None,
@@ -123,7 +123,7 @@ class R171:
                     continue
 
                 if measurement_code == "PMA":
-                    record = computed_records[usage_point][time]["power_max"]
+                    record = computed_records[usage_point][time]["power/apparent/max"]
                     if record.unit is None:
                         record.unit = unit
                     if record.value is None or record.value < value:
@@ -131,7 +131,7 @@ class R171:
 
                 elif measurement_code == "EA":
                     # TODO(cyril) check that sum is actually the main index
-                    record = computed_records[usage_point][time]["active_energy"]
+                    record = computed_records[usage_point][time]["energy/active/index"]
                     if record.unit is None:
                         record.unit = unit
                     if record.value is None:
@@ -181,7 +181,7 @@ class R151:
                 ).lower()
                 name = (
                     base_name
-                    + f"/active_energy/index/{temporal_class_owner}/{temporal_class_id}"
+                    + f"/energy/active/index/{temporal_class_owner}/{temporal_class_id}"
                 )
 
                 record = Record(name, time, "Wh", value)
@@ -190,7 +190,7 @@ class R151:
 
                 index_sum += value
 
-            name = base_name + "/active_energy/index"
+            name = base_name + "/energy/active/index"
             record = Record(name, time, "Wh", index_sum)
             yield record
 
@@ -203,7 +203,7 @@ class R151:
                 unit = "Wh"
                 name = (
                     base_name
-                    + f"/active_energy/index/{temporal_class_owner}/{temporal_class_id}"
+                    + f"/energy/active/index/{temporal_class_owner}/{temporal_class_id}"
                 )
 
                 record = Record(name, time, unit, value)
@@ -213,7 +213,7 @@ class R151:
             pmax_element = _find_element(data, "Puissance_Maximale")
 
             value = int(_find_text(pmax_element, "Valeur"))
-            name = base_name + "/apparent_power/max"
+            name = base_name + "/power/apparent/max"
             unit = "VA"
             record = Record(name, time, unit, value)
 

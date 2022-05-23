@@ -37,7 +37,7 @@ class DetailedMeasurements:
         # à la date du jour, limités à la dernière mise en service.
         #
         # Courbe de puissance active consommée brute
-        "consumption/active_power/raw": {
+        "consumption/power/active/raw": {
             "params": {
                 "initiateurLogin": None,
                 "pointId": None,
@@ -63,7 +63,7 @@ class DetailedMeasurements:
             },
         },
         # Courbe de puissance active consommée corrigées
-        "consumption/active_power/corrected": {
+        "consumption/power/active/corrected": {
             "params": {
                 "initiateurLogin": None,
                 "pointId": None,
@@ -89,7 +89,7 @@ class DetailedMeasurements:
         },
         # Courbe de puissance active produite brute
         # P1-P4
-        "production/active_power/raw": {
+        "production/power/active/raw": {
             "params": {
                 "initiateurLogin": None,
                 "pointId": None,
@@ -114,7 +114,7 @@ class DetailedMeasurements:
         },
         # Courbe de puissance active produite corrigées
         # P1-P3
-        "production/active_power/corrected": {
+        "production/power/active/corrected": {
             "params": {
                 "initiateurLogin": None,
                 "pointId": None,
@@ -140,7 +140,7 @@ class DetailedMeasurements:
         },
         # Productions globales quotidiennes
         # C5
-        "consumption/energy/daily": {
+        "consumption/energy/active/daily": {
             "params": {
                 "initiateurLogin": None,
                 "pointId": None,
@@ -167,7 +167,7 @@ class DetailedMeasurements:
         },
         # Productions globales quotidiennes
         # P4
-        "production/energy/daily": {
+        "production/energy/active/daily": {
             "params": {
                 "initiateurLogin": None,
                 "pointId": None,

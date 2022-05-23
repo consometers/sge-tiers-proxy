@@ -35,6 +35,8 @@ class TestGetMeasurement(unittest.TestCase):
             address=address,
         )
 
+        self.proxy = CONF_PROXY["xmpp"]["full_jid"]
+
     def tearDown(self):
         self.client.disconnect()
 
@@ -43,46 +45,58 @@ class TestGetMeasurement(unittest.TestCase):
 
     # test_accesses_are_logged
 
-    def test_get_authorized_consumption_active_power(self):
+    def test_get_authorized_consumption_power_active(self):
         measurement = (
-            f"urn:dev:prm:{self.usage_point['id']}_consumption/active_power/raw"
+            f"urn:dev:prm:{self.usage_point['id']}_consumption/power/active/raw"
         )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
-        measurements = self.client.get_records(measurement, start_date, end_date)
+        measurements = self.client.get_records(
+            self.proxy, measurement, start_date, end_date
+        )
         print(measurements)
 
-    def test_get_authorized_consumption_daily_energy(self):
-        measurement = f"urn:dev:prm:{self.usage_point['id']}_consumption/energy/daily"
+    def test_get_authorized_consumption_energy_daily(self):
+        measurement = (
+            f"urn:dev:prm:{self.usage_point['id']}_consumption/energy/active/daily"
+        )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=30)
-        measurements = self.client.get_records(measurement, start_date, end_date)
+        measurements = self.client.get_records(
+            self.proxy, measurement, start_date, end_date
+        )
         print(measurements)
 
-    def test_get_authorized_production_active_power(self):
+    def test_get_authorized_production_power_active(self):
         measurement = (
-            f"urn:dev:prm:{self.usage_point['id']}_production/active_power/raw"
+            f"urn:dev:prm:{self.usage_point['id']}_production/power/active/raw"
         )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
-        measurements = self.client.get_records(measurement, start_date, end_date)
+        measurements = self.client.get_records(
+            self.proxy, measurement, start_date, end_date
+        )
         print(measurements)
 
-    def test_get_authorized_production_daily_energy(self):
-        measurement = f"urn:dev:prm:{self.usage_point['id']}_production/energy/daily"
+    def test_get_authorized_production_energy_daily(self):
+        measurement = (
+            f"urn:dev:prm:{self.usage_point['id']}_production/energy/active/daily"
+        )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=30)
-        measurements = self.client.get_records(measurement, start_date, end_date)
+        measurements = self.client.get_records(
+            self.proxy, measurement, start_date, end_date
+        )
         print(measurements)
 
     def test_get_unauthorized(self):
         measurement = (
-            f"urn:dev:prm:{self.usage_point['id']}_consumption/active_power/raw"
+            f"urn:dev:prm:{self.usage_point['id']}_consumption/power/active/raw"
         )
         end_date = dt.date.today() - dt.timedelta(days=1)
         start_date = end_date - dt.timedelta(days=6)
         with self.assertRaises(quoalise.NotAuthorized) as context:
-            self.client.get_records(measurement, start_date, end_date)
+            self.client.get_records(self.proxy, measurement, start_date, end_date)
 
         self.assertTrue(self.usage_point["id"] in str(context.exception))
 

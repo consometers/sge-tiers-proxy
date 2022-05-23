@@ -32,7 +32,7 @@ def fail_with(message, code):
 
 class GetMeasurements:
 
-    SAMPLE_IDENTIFIER = "urn:dev:prm:00000000000000_consumption/active_power/raw"
+    SAMPLE_IDENTIFIER = "urn:dev:prm:00000000000000_consumption/power/active/raw"
 
     def __init__(self, xmpp_client, db_session_maker, data_provider):
         self.xmpp_client = xmpp_client
