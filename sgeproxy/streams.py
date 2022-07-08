@@ -1,4 +1,4 @@
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Optional
 import xml.etree.ElementTree as ET
 import datetime as dt
 import pytz
@@ -10,6 +10,10 @@ def _find_element(parent: ET.Element, tag: str) -> ET.Element:
     found = parent.find(tag)
     assert found is not None, f"Unable to find {tag}"
     return found
+
+
+def _find_optional_element(parent: ET.Element, tag: str) -> Optional[ET.Element]:
+    return parent.find(tag)
 
 
 def _find_text(parent: ET.Element, tag: str) -> str:
@@ -210,11 +214,13 @@ class R151:
 
                 yield record
 
-            pmax_element = _find_element(data, "Puissance_Maximale")
+            pmax_element = _find_optional_element(data, "Puissance_Maximale")
 
-            value = int(_find_text(pmax_element, "Valeur"))
-            name = base_name + "/power/apparent/max"
-            unit = "VA"
-            record = Record(name, time, unit, value)
+            # Might not be present when data is not available
+            if pmax_element is not None:
+                value = int(_find_text(pmax_element, "Valeur"))
+                name = base_name + "/power/apparent/max"
+                unit = "VA"
+                record = Record(name, time, unit, value)
 
-            yield record
+                yield record
