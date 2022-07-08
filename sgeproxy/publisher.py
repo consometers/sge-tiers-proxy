@@ -51,7 +51,11 @@ class XmppPublisher(slixmpp.ClientXMPP):
 
     async def send_data(self, to, records):
 
+        # Quick and dirty rate limit
+        await asyncio.sleep(0.5)
+
         message = self.Message()
+        message["from"] = self.boundjid.full
         message["to"] = to
 
         quoalise = ET.Element("{urn:quoalise:0}quoalise")
@@ -64,26 +68,33 @@ class XmppPublisher(slixmpp.ClientXMPP):
 
 
 class StreamsFiles:
-    def __init__(self, inbox_dir, archive_dir, aes_iv, aes_key):
+    def __init__(self, inbox_dir, archive_dir, aes_iv, aes_key, publish_archives=False):
         self.inbox_dir = inbox_dir
         self.archive_dir = archive_dir
         self.aes_iv = aes_iv
         self.aes_key = aes_key
+        self.publish_archives = publish_archives
 
-    def open(self, inbox_file_path):
-        return StreamFiles(inbox_file_path, self.aes_iv, self.aes_key)
+    def open(self, file_path):
+        return StreamFiles(file_path, self.aes_iv, self.aes_key)
 
-    def archive(self, inbox_file_path):
+    def archive(self, file_path):
+        if self.publish_archives:
+            # We are publishing data that have archived already
+            return
         archive_file_path = os.path.join(
             self.archive_dir,
             dt.date.today().isoformat(),
-            os.path.basename(inbox_file_path),
+            os.path.basename(file_path),
         )
         os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
-        os.rename(inbox_file_path, archive_file_path)
+        os.rename(file_path, archive_file_path)
 
     def glob(self, pattern):
-        pattern = os.path.join(self.inbox_dir, "**", pattern)
+        if self.publish_archives:
+            pattern = os.path.join(self.archive_dir, "**", pattern)
+        else:
+            pattern = os.path.join(self.inbox_dir, "**", pattern)
         return glob.iglob(pattern, recursive=True)
 
     def glob_svc(self):
@@ -164,7 +175,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "conf", help="Configuration file (typically private/*.conf.json)"
     )
+    parser.add_argument(
+        "--publish-archives", help="Send archives instead of inbox", action="store_true"
+    )
+    parser.add_argument("--user", help="Only send data to the specified user")
     args = parser.parse_args()
+
+    if args.publish_archives and not args.user:
+        raise RuntimeError("Please provide a single user when publishing archives")
 
     conf = sgeproxy.config.File(args.conf)
 
@@ -187,6 +205,7 @@ if __name__ == "__main__":
         conf["streams"]["archive_dir"],
         conf["streams"]["aes_iv"],
         conf["streams"]["aes_key"],
+        publish_archives=args.publish_archives
     )
 
     # We do nothing with stream transfer companion metadata for now
@@ -202,6 +221,7 @@ if __name__ == "__main__":
                 r171 = sgeproxy.streams.R171(files[0])
                 for record in r171.records():
                     records.append(record)
+            streams_files.archive(f)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
 
@@ -212,6 +232,7 @@ if __name__ == "__main__":
                 r151 = sgeproxy.streams.R151(files[0])
                 for record in r151.records():
                     records.append(record)
+            streams_files.archive(f)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
 
@@ -223,10 +244,13 @@ if __name__ == "__main__":
 
     for sub in db_session.query(Subscription).all():
         series_name = f"urn:dev:prm:{sub.usage_point_id}_{sub.series_name}"
-        print(series_name)
         sub_records = [r for r in records if r.name.startswith(series_name)]
         if not sub_records:
             continue
+        # TODO move check to query
+        if args.user and args.user != sub.user_id:
+            continue
+        print(series_name)
         with sub.notification_checks():
             loop.run_until_complete(xmpp.send_data(sub.user_id, sub_records))
 
