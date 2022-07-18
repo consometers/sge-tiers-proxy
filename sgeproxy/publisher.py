@@ -104,8 +104,13 @@ class StreamsFiles:
         return self.glob("ENEDIS_R171_*.zip")
 
     def glob_r151(self):
-        return self.glob("ERDF_R151_*.zip*")
+        return self.glob("ERDF_R151_*.zip")
 
+    def glob_r50(self):
+        return self.glob("ERDF_R50_*.zip")
+
+    def glob_r4x(self):
+        return self.glob("ENEDIS_*_R4Q_CDC_*.zip")
 
 class StreamFiles:
     def __init__(self, inbox_file_path, aes_iv, aes_key):
@@ -234,6 +239,28 @@ if __name__ == "__main__":
                 r151 = sgeproxy.streams.R151(files[0])
                 for record in r151.records():
                     records.append(record)
+            streams_files.archive(f)
+        except Exception:
+            logging.exception(f"Unable to parse data from {f}")
+
+    for f in streams_files.glob_r50():
+        try:
+            with streams_files.open(f) as files:
+                for file in files:
+                    r50 = sgeproxy.streams.R50(file)
+                    for record in r50.records():
+                        records.append(record)
+            streams_files.archive(f)
+        except Exception:
+            logging.exception(f"Unable to parse data from {f}")
+
+    for f in streams_files.glob_r4x():
+        try:
+            with streams_files.open(f) as files:
+                for file in files:
+                    r4x = sgeproxy.streams.R4x(file)
+                    for record in r4x.records():
+                        records.append(record)
             streams_files.archive(f)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")

@@ -227,6 +227,7 @@ class R151:
 
                 yield record
 
+
 # Multiple files per zip archive
 # Multiple PRMs per files
 class R50:
@@ -265,17 +266,20 @@ class R50:
                 datetime = datetime - dt.timedelta(minutes=period_minutes)
 
                 records.append((datetime, value))
-            
+
             datetimes = sorted(datetime for datetime, _ in records)
-            periods = [j-i for i in datetimes[:-1] for j in datetimes[1:]]
+            periods = [j - i for i in datetimes[:-1] for j in datetimes[1:]]
             if periods:
-                period_median = statistics.median([int(p.total_seconds()/60) for p in periods])
+                period_median = statistics.median(
+                    [int(p.total_seconds() / 60) for p in periods]
+                )
                 assert period_median == period_minutes
 
             for datetime, value in records:
-                record = Record(name, datetime, "W", value) 
+                record = Record(name, datetime, "W", value)
 
                 yield record
+
 
 class R4x:
     def __init__(self, xml_doc: str) -> None:
@@ -289,7 +293,7 @@ class R4x:
             nature = "raw"
         else:
             raise RuntimeError(f"Nature {nature} is not supported yet")
-        
+
         body = _find_element(self.doc, "Corps")
         usage_point = _find_text(body, "Identifiant_PRM")
 
@@ -298,8 +302,7 @@ class R4x:
             unit = _find_text(curve, "Unite_Mesure")
 
             period = int(_find_text(curve, "Granularite"))
-            assert period == 10 # From spec
-
+            assert period == 10  # From spec
 
             direction = _find_text(curve, "Grandeur_Metier")
             if direction == "CONS":
@@ -311,10 +314,12 @@ class R4x:
             if measurement == "EA":
                 name = "power/active"
                 assert unit == "kW"
-                unit = "Wh" # Value will be converted
+                unit = "W"  # Value will be converted
             elif measurement == "ERC":
+                # TODO(cyril) which standard unit do we want to use (currenly kVAr)
                 name = "power/capacitive"
             elif measurement == "ERI":
+                # TODO(cyril) which standard unit do we want to use (currenly kVAr)
                 name = "power/inductive"
             elif measurement == "E":
                 name = "voltage"
@@ -347,7 +352,7 @@ class R4x:
                 if measurement == "EA":
                     # sge tiers proxy uses W
                     value = value * 1000
-                
+
                 record = Record(name, datetime, unit, value)
 
                 yield record
