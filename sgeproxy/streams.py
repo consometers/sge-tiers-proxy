@@ -1,6 +1,6 @@
 import logging
 import statistics
-from typing import Dict, Iterable, Optional, List, Tuple
+from typing import Dict, Iterable, Optional, List, Tuple, Union
 import xml.etree.ElementTree as ET
 import datetime as dt
 import pytz
@@ -8,7 +8,7 @@ import pytz
 from quoalise.data import Record
 
 
-def _find_element(parent: ET.Element, tag: str) -> ET.Element:
+def _find_element(parent: Union[ET.ElementTree, ET.Element], tag: str) -> ET.Element:
     found = parent.find(tag)
     assert found is not None, f"Unable to find {tag}"
     return found
@@ -255,11 +255,14 @@ class R50:
             records: List[Tuple[dt.datetime, int]] = []
 
             for pdc in prm.findall("./Donnees_Releve/PDC"):
-                datetime = _find_text(pdc, "H")
+                datetime_str = _find_text(pdc, "H")
                 value = int(_find_text(pdc, "V"))
                 caution = int(_find_text(pdc, "IV"))
 
-                datetime = dt.datetime.fromisoformat(datetime)
+                if caution:
+                    logging.warn(f"caution {caution} is not handled yet")
+
+                datetime = dt.datetime.fromisoformat(datetime_str)
 
                 # Data from file is stamped at the end of periods,
                 # quoalise timestamp them at the begining
@@ -344,7 +347,8 @@ class R4x:
                     # G : Fin de coupure secteur
                     # E : Estimé
                     # C : Corrigé
-                    # K : Calculé, point de courbe issu d’un calcul basé sur d’autres courbes de charges
+                    # K : Calculé, point de courbe issu d’un calcul basé sur
+                    #     d’autres courbes de charges
                     # D : importé manuellement par le métier Enedis
                     logging.warn(f"status {status} is not handled yet")
                     continue

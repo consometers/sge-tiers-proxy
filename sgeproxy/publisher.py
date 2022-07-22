@@ -112,6 +112,7 @@ class StreamsFiles:
     def glob_r4x(self):
         return self.glob("ENEDIS_*_R4Q_CDC_*.zip")
 
+
 class StreamFiles:
     def __init__(self, inbox_file_path, aes_iv, aes_key):
 
@@ -216,7 +217,7 @@ if __name__ == "__main__":
         conf["streams"]["archive_dir"],
         conf["streams"]["aes_iv"],
         conf["streams"]["aes_key"],
-        publish_archives=args.publish_archives
+        publish_archives=args.publish_archives,
     )
 
     # We do nothing with stream transfer companion metadata for now
