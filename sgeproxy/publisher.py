@@ -173,15 +173,7 @@ if __name__ == "__main__":
     import sgeproxy.config
     import logging.handlers
 
-    logging.basicConfig()
-    debug = []
-
-    debug.append("slixmpp")
-
-    for logger_name in debug:
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(logging.DEBUG)
-        logger.propagate = True
+    logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -197,6 +189,39 @@ if __name__ == "__main__":
         raise RuntimeError("Please provide a single user when publishing archives")
 
     conf = sgeproxy.config.File(args.conf)
+
+    logger = logging.getLogger()
+    # Log info to a file, ignoring the log level from command line
+    # (rotates every monday, can be deleted regularly)
+    os.makedirs(conf["logs_dir"], exist_ok=True)
+    debug_log = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(conf["logs_dir"], "publisher.debug.log"),
+        when="W0",
+        interval=1,
+        backupCount=0,
+        atTime=dt.datetime.min,
+    )
+    debug_log.setLevel(logging.DEBUG)
+    debug_log.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(debug_log)
+
+    # Log error to a file, ignoring the log level from command line
+    # (rotates every monday, should be archived)
+    error_log = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(conf["logs_dir"], "publisher.error.log"),
+        when="W0",
+        interval=1,
+        backupCount=0,
+        atTime=dt.datetime.min,
+    )
+    error_log.setLevel(logging.ERROR)
+    error_log.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(error_log)
+
+    # Log to console at the level asked by command line
+    console = logging.StreamHandler()
+    console.setLevel(getattr(logging, args.log_level.upper()))
+    logger.addHandler(console)
 
     db_engine = create_engine(conf["db"]["url"])
     db_session_maker = sessionmaker(bind=db_engine)
