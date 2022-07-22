@@ -190,9 +190,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--publish-archives", help="Send archives instead of inbox", action="store_true"
     )
-    parser.add_argument(
-        "--user", help="Only send data to the specified user"
-    )
+    parser.add_argument("--user", help="Only send data to the specified user")
     args = parser.parse_args()
 
     if args.publish_archives and not args.user:
