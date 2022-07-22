@@ -252,6 +252,7 @@ if __name__ == "__main__":
     records = []
 
     for f in streams_files.glob_r171():
+        logging.info(f"Parsing R171 {f}")
         try:
             with streams_files.open(f) as files:
                 assert len(files) == 1
@@ -263,6 +264,7 @@ if __name__ == "__main__":
             logging.exception(f"Unable to parse data from {f}")
 
     for f in streams_files.glob_r151():
+        logging.info(f"Parsing R151 {f}")
         try:
             with streams_files.open(f) as files:
                 assert len(files) == 1
@@ -274,6 +276,7 @@ if __name__ == "__main__":
             logging.exception(f"Unable to parse data from {f}")
 
     for f in streams_files.glob_r50():
+        logging.info(f"Parsing R50 {f}")
         try:
             with streams_files.open(f) as files:
                 for file in files:
@@ -285,6 +288,7 @@ if __name__ == "__main__":
             logging.exception(f"Unable to parse data from {f}")
 
     for f in streams_files.glob_r4x():
+        logging.info(f"Parsing R4x {f}")
         try:
             with streams_files.open(f) as files:
                 for file in files:
@@ -309,7 +313,6 @@ if __name__ == "__main__":
         # TODO move check to query
         if args.user and args.user != sub.user_id:
             continue
-        print(series_name)
 
         with sub.notification_checks():
             for sub_records_chunk in chunks(sub_records, 1000):
