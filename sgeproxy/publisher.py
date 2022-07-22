@@ -205,6 +205,15 @@ if __name__ == "__main__":
     debug_log.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(debug_log)
 
+    debug = []
+    debug.append("slixmpp")
+
+    for logger_name in debug:
+        module_logger = logging.getLogger(logger_name)
+        module_logger.addHandler(debug_log)
+        module_logger.setLevel(logging.DEBUG)
+        #logger.propagate = True
+
     # Log error to a file, ignoring the log level from command line
     # (rotates every monday, should be archived)
     error_log = logging.handlers.TimedRotatingFileHandler(
@@ -217,11 +226,6 @@ if __name__ == "__main__":
     error_log.setLevel(logging.ERROR)
     error_log.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(error_log)
-
-    # Log to console at the level asked by command line
-    console = logging.StreamHandler()
-    console.setLevel(getattr(logging, args.log_level.upper()))
-    logger.addHandler(console)
 
     db_engine = create_engine(conf["db"]["url"])
     db_session_maker = sessionmaker(bind=db_engine)
