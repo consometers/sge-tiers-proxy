@@ -160,10 +160,12 @@ class StreamFiles:
     def __exit__(self, type, value, traceback):
         shutil.rmtree(self.temp_dir)
 
+
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
-        yield lst[i:i + n]
+        yield lst[i : i + n]
+
 
 if __name__ == "__main__":
 
