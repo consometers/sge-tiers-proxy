@@ -161,6 +161,12 @@ class StreamFiles:
         shutil.rmtree(self.temp_dir)
 
 
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i : i + n]
+
+
 if __name__ == "__main__":
 
     import argparse
@@ -279,7 +285,9 @@ if __name__ == "__main__":
         if args.user and args.user != sub.user_id:
             continue
         print(series_name)
+
         with sub.notification_checks():
-            loop.run_until_complete(xmpp.send_data(sub.user_id, sub_records))
+            for sub_records_chunk in chunks(sub_records, 1000):
+                loop.run_until_complete(xmpp.send_data(sub.user_id, sub_records_chunk))
 
     xmpp.disconnect()
