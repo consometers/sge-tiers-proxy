@@ -173,15 +173,7 @@ if __name__ == "__main__":
     import sgeproxy.config
     import logging.handlers
 
-    logging.basicConfig()
-    debug = []
-
-    debug.append("slixmpp")
-
-    for logger_name in debug:
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(logging.DEBUG)
-        logger.propagate = True
+    logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -197,6 +189,43 @@ if __name__ == "__main__":
         raise RuntimeError("Please provide a single user when publishing archives")
 
     conf = sgeproxy.config.File(args.conf)
+
+    logger = logging.getLogger()
+    # Log info to a file, ignoring the log level from command line
+    # (rotates every monday, can be deleted regularly)
+    os.makedirs(conf["logs_dir"], exist_ok=True)
+    debug_log = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(conf["logs_dir"], "publisher.debug.log"),
+        when="W0",
+        interval=1,
+        backupCount=0,
+        atTime=dt.datetime.min,
+    )
+    debug_log.setLevel(logging.DEBUG)
+    debug_log.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(debug_log)
+
+    debug = []
+    debug.append("slixmpp")
+
+    for logger_name in debug:
+        module_logger = logging.getLogger(logger_name)
+        module_logger.addHandler(debug_log)
+        module_logger.setLevel(logging.DEBUG)
+        #logger.propagate = True
+
+    # Log error to a file, ignoring the log level from command line
+    # (rotates every monday, should be archived)
+    error_log = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(conf["logs_dir"], "publisher.error.log"),
+        when="W0",
+        interval=1,
+        backupCount=0,
+        atTime=dt.datetime.min,
+    )
+    error_log.setLevel(logging.ERROR)
+    error_log.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(error_log)
 
     db_engine = create_engine(conf["db"]["url"])
     db_session_maker = sessionmaker(bind=db_engine)
@@ -227,6 +256,7 @@ if __name__ == "__main__":
     records = []
 
     for f in streams_files.glob_r171():
+        logging.info(f"Parsing R171 {f}")
         try:
             with streams_files.open(f) as files:
                 assert len(files) == 1
@@ -238,6 +268,7 @@ if __name__ == "__main__":
             logging.exception(f"Unable to parse data from {f}")
 
     for f in streams_files.glob_r151():
+        logging.info(f"Parsing R151 {f}")
         try:
             with streams_files.open(f) as files:
                 assert len(files) == 1
@@ -249,6 +280,7 @@ if __name__ == "__main__":
             logging.exception(f"Unable to parse data from {f}")
 
     for f in streams_files.glob_r50():
+        logging.info(f"Parsing R50 {f}")
         try:
             with streams_files.open(f) as files:
                 for file in files:
@@ -260,6 +292,7 @@ if __name__ == "__main__":
             logging.exception(f"Unable to parse data from {f}")
 
     for f in streams_files.glob_r4x():
+        logging.info(f"Parsing R4x {f}")
         try:
             with streams_files.open(f) as files:
                 for file in files:
@@ -269,6 +302,8 @@ if __name__ == "__main__":
             streams_files.archive(f)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
+
+    logging.info(f"Parsed {len(records)} records.")
 
     xmpp.connect()
 
@@ -284,7 +319,6 @@ if __name__ == "__main__":
         # TODO move check to query
         if args.user and args.user != sub.user_id:
             continue
-        print(series_name)
 
         with sub.notification_checks():
             for sub_records_chunk in chunks(sub_records, 1000):
