@@ -318,6 +318,8 @@ if __name__ == "__main__":
             logging.exception(f"Unable to parse data from {f}")
             streams_files.move_to_errors(f)
 
+    logging.info(f"Parsed {len(records)} records.")
+
     xmpp.connect()
 
     loop = asyncio.get_event_loop()
