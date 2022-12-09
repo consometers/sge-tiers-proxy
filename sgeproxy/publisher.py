@@ -68,9 +68,10 @@ class XmppPublisher(slixmpp.ClientXMPP):
 
 
 class StreamsFiles:
-    def __init__(self, inbox_dir, archive_dir, aes_iv, aes_key, publish_archives=False):
+    def __init__(self, inbox_dir, archive_dir, errors_dir, aes_iv, aes_key, publish_archives=False):
         self.inbox_dir = inbox_dir
         self.archive_dir = archive_dir
+        self.errors_dir = errors_dir
         self.aes_iv = aes_iv
         self.aes_key = aes_key
         self.publish_archives = publish_archives
@@ -89,6 +90,18 @@ class StreamsFiles:
         )
         os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
         os.rename(file_path, archive_file_path)
+
+    def move_to_errors(self, file_path):
+        if self.publish_archives:
+            # Do not mess with archived files
+            return
+        error_file_path = os.path.join(
+            self.errors_dir,
+            dt.date.today().isoformat(),
+            os.path.basename(file_path),
+        )
+        os.makedirs(os.path.dirname(error_file_path), exist_ok=True)
+        os.rename(file_path, error_file_path)
 
     def glob(self, pattern):
         if self.publish_archives:
@@ -238,12 +251,10 @@ if __name__ == "__main__":
     # loop.run_until_complete(main(conf, sge_credentials))
     # loop.run_forever()
 
-    inbox_dir = conf["streams"]["inbox_dir"]
-    archive_dir = conf["streams"]["archive_dir"]
-
     streams_files = StreamsFiles(
         conf["streams"]["inbox_dir"],
         conf["streams"]["archive_dir"],
+        conf["streams"]["errors_dir"],
         conf["streams"]["aes_iv"],
         conf["streams"]["aes_key"],
         publish_archives=args.publish_archives,
@@ -266,6 +277,7 @@ if __name__ == "__main__":
             streams_files.archive(f)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
+            streams_files.move_to_errors(f)
 
     for f in streams_files.glob_r151():
         logging.info(f"Parsing R151 {f}")
@@ -278,6 +290,7 @@ if __name__ == "__main__":
             streams_files.archive(f)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
+            streams_files.move_to_errors(f)
 
     for f in streams_files.glob_r50():
         logging.info(f"Parsing R50 {f}")
@@ -290,6 +303,7 @@ if __name__ == "__main__":
             streams_files.archive(f)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
+            streams_files.move_to_errors(f)
 
     for f in streams_files.glob_r4x():
         logging.info(f"Parsing R4x {f}")
@@ -302,6 +316,7 @@ if __name__ == "__main__":
             streams_files.archive(f)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
+            streams_files.move_to_errors(f)
 
     xmpp.connect()
 
