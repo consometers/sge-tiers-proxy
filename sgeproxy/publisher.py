@@ -8,6 +8,7 @@ import tempfile
 import shutil
 import subprocess
 import datetime as dt
+import re
 
 import slixmpp
 from slixmpp.xmlstream import ET
@@ -68,7 +69,15 @@ class XmppPublisher(slixmpp.ClientXMPP):
 
 
 class StreamsFiles:
-    def __init__(self, inbox_dir, archive_dir, errors_dir, aes_iv, aes_key, publish_archives=False):
+    def __init__(
+        self,
+        inbox_dir,
+        archive_dir,
+        errors_dir,
+        aes_iv,
+        aes_key,
+        publish_archives=False,
+    ):
         self.inbox_dir = inbox_dir
         self.archive_dir = archive_dir
         self.errors_dir = errors_dir
@@ -103,27 +112,45 @@ class StreamsFiles:
         os.makedirs(os.path.dirname(error_file_path), exist_ok=True)
         os.rename(file_path, error_file_path)
 
-    def glob(self, pattern):
+    def glob(self):
         if self.publish_archives:
-            pattern = os.path.join(self.archive_dir, "**", pattern)
+            pattern = os.path.join(self.archive_dir, "**", "*")
         else:
-            pattern = os.path.join(self.inbox_dir, "**", pattern)
+            pattern = os.path.join(self.inbox_dir, "**", "*")
         return glob.iglob(pattern, recursive=True)
 
-    def glob_svc(self):
-        return self.glob("*_svc.xml")
+    def file_records(self, path):
 
-    def glob_r171(self):
-        return self.glob("ENEDIS_R171_*.zip")
+        filename = os.path.basename(path)
 
-    def glob_r151(self):
-        return self.glob("ERDF_R151_*.zip")
+        # We do nothing with stream transfer companion metadata for now
+        if re.match(r"_svc.xml$", path):
+            self.archive(path)
 
-    def glob_r50(self):
-        return self.glob("ERDF_R50_*.zip")
+        filename_stream_patterns = {
+            r"^ENEDIS_R171_.+\.zip$": sgeproxy.streams.R171,
+            r"^ERDF_R151_.+\.zip$": sgeproxy.streams.R151,
+            r"^ERDF_R50_.+\.zip$": sgeproxy.streams.R50,
+            r"^ENEDIS_.+_R4Q_CDC_.+\.zip$": sgeproxy.streams.R4x,
+        }
 
-    def glob_r4x(self):
-        return self.glob("ENEDIS_*_R4Q_CDC_*.zip")
+        stream_handler = None
+        for pattern in filename_stream_patterns:
+            if re.match(pattern, filename):
+                stream_handler = filename_stream_patterns[pattern]
+                break
+
+        if stream_handler is None:
+            logging.error("No handler for file {}", path)
+            return
+
+        with self.open(path) as data_files:
+            for data_file in data_files:
+                stream = stream_handler(data_file)
+                for record in stream.records():
+                    yield record  # or yield stream.records()?
+
+        self.archive(path)
 
 
 class StreamFiles:
@@ -225,7 +252,7 @@ if __name__ == "__main__":
         module_logger = logging.getLogger(logger_name)
         module_logger.addHandler(debug_log)
         module_logger.setLevel(logging.DEBUG)
-        #logger.propagate = True
+        # logger.propagate = True
 
     # Log error to a file, ignoring the log level from command line
     # (rotates every monday, should be archived)
@@ -260,60 +287,13 @@ if __name__ == "__main__":
         publish_archives=args.publish_archives,
     )
 
-    # We do nothing with stream transfer companion metadata for now
-    for f in streams_files.glob_svc():
-        streams_files.archive(f)
-
     records = []
 
-    for f in streams_files.glob_r171():
-        logging.info(f"Parsing R171 {f}")
+    for f in streams_files.glob():
+        logging.info(f"Parsing {f}")
         try:
-            with streams_files.open(f) as files:
-                assert len(files) == 1
-                r171 = sgeproxy.streams.R171(files[0])
-                for record in r171.records():
-                    records.append(record)
-            streams_files.archive(f)
-        except Exception:
-            logging.exception(f"Unable to parse data from {f}")
-            streams_files.move_to_errors(f)
-
-    for f in streams_files.glob_r151():
-        logging.info(f"Parsing R151 {f}")
-        try:
-            with streams_files.open(f) as files:
-                assert len(files) == 1
-                r151 = sgeproxy.streams.R151(files[0])
-                for record in r151.records():
-                    records.append(record)
-            streams_files.archive(f)
-        except Exception:
-            logging.exception(f"Unable to parse data from {f}")
-            streams_files.move_to_errors(f)
-
-    for f in streams_files.glob_r50():
-        logging.info(f"Parsing R50 {f}")
-        try:
-            with streams_files.open(f) as files:
-                for file in files:
-                    r50 = sgeproxy.streams.R50(file)
-                    for record in r50.records():
-                        records.append(record)
-            streams_files.archive(f)
-        except Exception:
-            logging.exception(f"Unable to parse data from {f}")
-            streams_files.move_to_errors(f)
-
-    for f in streams_files.glob_r4x():
-        logging.info(f"Parsing R4x {f}")
-        try:
-            with streams_files.open(f) as files:
-                for file in files:
-                    r4x = sgeproxy.streams.R4x(file)
-                    for record in r4x.records():
-                        records.append(record)
-            streams_files.archive(f)
+            for record in streams_files.file_records(f):
+                records.append(record)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
             streams_files.move_to_errors(f)
