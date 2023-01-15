@@ -6,6 +6,15 @@ import datetime as dt
 import pytz
 
 from quoalise.data import Record
+from sgeproxy.metadata import Metadata, SamplingInterval
+from sgeproxy.metadata_enedis import (
+    MetadataEnedisConsumptionPowerActiveRaw,
+    MetadataEnedisConsumptionPowerApparentMax,
+    MetadataEnedisConsumptionEnergyActiveIndex,
+    MetadataEnedisConsumptionPowerCapacitiveRaw,
+    MetadataEnedisConsumptionPowerInductiveRaw,
+    MetadataEnedisConsumptionVoltageRaw,
+)
 
 
 def _find_element(parent: Union[ET.ElementTree, ET.Element], tag: str) -> ET.Element:
@@ -32,10 +41,10 @@ class R171:
     def __init__(self, xml_doc: str) -> None:
         self.doc = ET.parse(xml_doc)
 
-    def records(self) -> Iterable[Record]:
+    def records(self) -> Iterable[Tuple[Metadata, Record]]:
 
         computed_records: Dict[
-            UsagePoint, Dict[dt.datetime, Dict[RecordName, Record]]
+            UsagePoint, Dict[dt.datetime, Dict[RecordName, Tuple[Metadata, Record]]]
         ] = {}
 
         for series in self.doc.findall(".//serieMesuresDatees"):
@@ -60,17 +69,21 @@ class R171:
                 raise RuntimeError("Is this supposed to happen?")
 
             base_name = f"urn:dev:prm:{usage_point}_{direction}"
+            ea_meta = MetadataEnedisConsumptionEnergyActiveIndex(usage_point)
+            pmax_meta = MetadataEnedisConsumptionPowerApparentMax(usage_point)
 
             if measurement_code == "PMA":
                 name = (
                     base_name
                     + f"/power/apparent/max/{temporal_class_owner}/{temporal_class}"
                 )
+                meta: Metadata = pmax_meta
             elif measurement_code == "EA":
                 name = (
                     base_name
                     + f"/energy/active/index/{temporal_class_owner}/{temporal_class}"
                 )
+                meta = ea_meta
             else:
                 # Data type not handled
                 # EA Energie Active
@@ -83,7 +96,11 @@ class R171:
                 # DQ Dépassement Quadratique
                 continue
 
+            assert unit == meta.measurement.unit.value
+
             for measurement in series.findall(".//mesureDatee"):
+                # TODO(cyril) PMAX is relevant over a period of time, should be
+                # stamped at the begining.
                 time_str = _find_text(measurement, "dateFin")
                 value = int(_find_text(measurement, "valeur"))
                 # TODO(cyril) check that datetime is actually Paris time
@@ -92,7 +109,7 @@ class R171:
                 time = dt.datetime.fromisoformat(time_str)
                 time = pytz.timezone("Europe/Paris").localize(time)
 
-                yield Record(name, time, unit, value)
+                yield meta, Record(name, time, unit, value)
 
                 # Autocomputed records
 
@@ -103,17 +120,23 @@ class R171:
 
                 if time not in computed_records[usage_point]:
                     computed_records[usage_point][time] = {
-                        "power/apparent/max": Record(
-                            f"{base_name}/power/apparent/max",
-                            time,
-                            None,
-                            None,
+                        "power/apparent/max": (
+                            pmax_meta,
+                            Record(
+                                f"{base_name}/power/apparent/max",
+                                time,
+                                None,
+                                None,
+                            ),
                         ),
-                        "energy/active/index": Record(
-                            f"{base_name}/energy/active/index",
-                            time,
-                            None,
-                            None,
+                        "energy/active/index": (
+                            ea_meta,
+                            Record(
+                                f"{base_name}/energy/active/index",
+                                time,
+                                None,
+                                None,
+                            ),
                         ),
                     }
 
@@ -129,17 +152,23 @@ class R171:
                     continue
 
                 if measurement_code == "PMA":
-                    record = computed_records[usage_point][time]["power/apparent/max"]
+                    meta, record = computed_records[usage_point][time][
+                        "power/apparent/max"
+                    ]
                     if record.unit is None:
                         record.unit = unit
+                    assert record.unit == meta.measurement.unit.value
                     if record.value is None or record.value < value:
                         record.value = value
 
                 elif measurement_code == "EA":
                     # TODO(cyril) check that sum is actually the main index
-                    record = computed_records[usage_point][time]["energy/active/index"]
+                    meta, record = computed_records[usage_point][time][
+                        "energy/active/index"
+                    ]
                     if record.unit is None:
                         record.unit = unit
+                    assert record.unit == meta.measurement.unit.value
                     if record.value is None:
                         record.value = value
                     else:
@@ -147,16 +176,16 @@ class R171:
 
         for usage_point in computed_records:
             for time, records in computed_records[usage_point].items():
-                for record in records.values():
+                for meta, record in records.values():
                     assert record.value is not None, "Unable to compute record"
-                    yield record
+                    yield meta, record
 
 
 class R151:
     def __init__(self, xml_doc: str) -> None:
         self.doc = ET.parse(xml_doc)
 
-    def records(self) -> Iterable[Record]:
+    def records(self) -> Iterable[Tuple[Metadata, Record]]:
 
         for prm in self.doc.findall(".//PRM"):
             usage_point = _find_text(prm, "Id_PRM")
@@ -164,6 +193,9 @@ class R151:
             # TODO(cyril) Check on a production usage point
             # (check in stream doc and commande collecte before)
             direction = "consumption"
+
+            ea_meta = MetadataEnedisConsumptionEnergyActiveIndex(usage_point)
+            pmax_meta = MetadataEnedisConsumptionPowerApparentMax(usage_point)
 
             data = _find_element(prm, "Donnees_Releve")
 
@@ -192,13 +224,13 @@ class R151:
 
                 record = Record(name, time, "Wh", value)
 
-                yield record
+                yield ea_meta, record
 
                 index_sum += value
 
             name = base_name + "/energy/active/index"
             record = Record(name, time, "Wh", index_sum)
-            yield record
+            yield ea_meta, record
 
             temporal_class_owner = "provider"
             for temporal_class in data.findall("./Classe_Temporelle"):
@@ -214,7 +246,7 @@ class R151:
 
                 record = Record(name, time, unit, value)
 
-                yield record
+                yield ea_meta, record
 
             pmax_element = _find_optional_element(data, "Puissance_Maximale")
 
@@ -223,9 +255,11 @@ class R151:
                 value = int(_find_text(pmax_element, "Valeur"))
                 name = base_name + "/power/apparent/max"
                 unit = "VA"
+                # TODO(cyril) valid over a period of time,
+                # should be stamped at the begining
                 record = Record(name, time, unit, value)
 
-                yield record
+                yield pmax_meta, record
 
 
 # Multiple files per zip archive
@@ -234,7 +268,7 @@ class R50:
     def __init__(self, xml_doc: str) -> None:
         self.doc = ET.parse(xml_doc)
 
-    def records(self) -> Iterable[Record]:
+    def records(self) -> Iterable[Tuple[Metadata, Record]]:
 
         header = _find_element(self.doc, "En_Tete_Flux")
         period_minutes = int(_find_text(header, "Pas_Publication"))
@@ -248,6 +282,10 @@ class R50:
             # TODO(cyril) Check on a production usage point
             # (check in stream doc and commande collecte before)
             direction = "consumption"
+
+            meta = MetadataEnedisConsumptionPowerActiveRaw(
+                usage_point, SamplingInterval("PT30M")
+            )
 
             name = f"urn:dev:prm:{usage_point}_{direction}/power/active/raw"
 
@@ -281,14 +319,17 @@ class R50:
             for datetime, value in records:
                 record = Record(name, datetime, "W", value)
 
-                yield record
+                yield meta, record
 
 
 class R4x:
+
+    SAMPLING_INTERVAL = SamplingInterval("PT10M")
+
     def __init__(self, xml_doc: str) -> None:
         self.doc = ET.parse(xml_doc)
 
-    def records(self) -> Iterable[Record]:
+    def records(self) -> Iterable[Tuple[Metadata, Record]]:
 
         header = _find_element(self.doc, "Entete")
         nature = _find_text(header, "Nature_De_Courbe_Demandee")
@@ -318,14 +359,30 @@ class R4x:
                 name = "power/active"
                 assert unit == "kW"
                 unit = "W"  # Value will be converted
+                meta: Metadata = MetadataEnedisConsumptionPowerActiveRaw(
+                    usage_point, self.SAMPLING_INTERVAL
+                )
             elif measurement == "ERC":
-                # TODO(cyril) which standard unit do we want to use (currenly kVAr)
                 name = "power/capacitive"
+                # TODO seems to be kVAr
+                # assert unit == "kWr"
+                unit = "Wr"  # Value will be converted
+                meta = MetadataEnedisConsumptionPowerCapacitiveRaw(
+                    usage_point, self.SAMPLING_INTERVAL
+                )
             elif measurement == "ERI":
-                # TODO(cyril) which standard unit do we want to use (currenly kVAr)
+                # TODO seems to be kVAr
+                # assert unit == "kWr"
+                unit = "Wr"  # Value will be converted
                 name = "power/inductive"
+                meta = MetadataEnedisConsumptionPowerInductiveRaw(
+                    usage_point, self.SAMPLING_INTERVAL
+                )
             elif measurement == "E":
                 name = "voltage"
+                meta = MetadataEnedisConsumptionVoltageRaw(
+                    usage_point, self.SAMPLING_INTERVAL
+                )
             else:
                 raise RuntimeError(f"Unexpected Grandeur {name}")
 
@@ -353,10 +410,10 @@ class R4x:
                     logging.warn(f"status {status} is not handled yet")
                     continue
 
-                if measurement == "EA":
-                    # sge tiers proxy uses W
+                if measurement in ["EA", "ERC", "ERI"]:
+                    # sge tiers proxy uses W, not kW
                     value = value * 1000
 
                 record = Record(name, datetime, unit, value)
 
-                yield record
+                yield meta, record

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import datetime as dt
 import re
+from typing import Dict, List, Tuple, Iterable
 
 import slixmpp
 from slixmpp.xmlstream import ET
@@ -19,7 +20,10 @@ import sgeproxy.sge
 import sgeproxy.xmpp_interface
 import sgeproxy.streams
 from sgeproxy.db import Subscription
-from quoalise.data import Data
+from quoalise.data import Data, Record, Metadata
+
+# SgeProxyMeta will be merged with quoalise.data.Metadata at some point
+from sgeproxy.metadata import Metadata as SgeProxyMeta
 
 
 class XmppPublisher(slixmpp.ClientXMPP):
@@ -50,7 +54,7 @@ class XmppPublisher(slixmpp.ClientXMPP):
         # await self.send_custom_iq()
         self.session_started.set_result(True)
 
-    async def send_data(self, to, records):
+    async def send_data(self, to, metadata, records):
 
         # Quick and dirty rate limit
         await asyncio.sleep(0.5)
@@ -62,7 +66,7 @@ class XmppPublisher(slixmpp.ClientXMPP):
         quoalise = ET.Element("{urn:quoalise:0}quoalise")
         message.append(quoalise)
 
-        data = Data(metadata=None, records=records)
+        data = Data(metadata=Metadata(metadata.to_dict()), records=records)
         quoalise.append(data.to_xml())
 
         return message.send()
@@ -124,8 +128,9 @@ class StreamsFiles:
         filename = os.path.basename(path)
 
         # We do nothing with stream transfer companion metadata for now
-        if re.match(r"_svc.xml$", path):
+        if path.endswith("_svc.xml"):
             self.archive(path)
+            return
 
         filename_stream_patterns = {
             r"^ENEDIS_R171_.+\.zip$": sgeproxy.streams.R171,
@@ -141,14 +146,14 @@ class StreamsFiles:
                 break
 
         if stream_handler is None:
-            logging.error("No handler for file {}", path)
+            logging.error(f"No handler for file {path}")
             return
 
         with self.open(path) as data_files:
             for data_file in data_files:
                 stream = stream_handler(data_file)
-                for record in stream.records():
-                    yield record  # or yield stream.records()?
+                for metadata, record in stream.records():
+                    yield metadata, record  # or yield stream.records()?
 
         self.archive(path)
 
@@ -201,10 +206,42 @@ class StreamFiles:
         shutil.rmtree(self.temp_dir)
 
 
-def chunks(lst, n):
+def chunks(lst: List[Record], n) -> Iterable[List[Record]]:
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
+
+
+class RecordsByName:
+    def __init__(self):
+        self.records: Dict[str, Tuple[SgeProxyMeta, List[Record]]] = {}
+
+    def add(self, metadata: SgeProxyMeta, record: Record) -> None:
+        if record.name not in self.records:
+            self.records[record.name] = (metadata, [record])
+        else:
+            # All records sharing the same name should share the same metadata
+            assert metadata == self.records[record.name][0]
+            self.records[record.name][1].append(record)
+
+    def get(
+        self, prefix: str = "", chunk_size: int = 0
+    ) -> Iterable[Tuple[SgeProxyMeta, List[Record]]]:
+        # Group records by metadata to be sent together
+        records_by_meta: Dict[SgeProxyMeta, List[Record]] = {}
+        for name, meta_with_records in self.records.items():
+            meta, records = meta_with_records
+            if name.startswith(prefix):
+                if meta not in records_by_meta:
+                    records_by_meta[meta] = records.copy()
+                else:
+                    records_by_meta[meta].extend(records)
+        for meta, records in records_by_meta.items():
+            if chunk_size:
+                for records_chunk in chunks(records, chunk_size):
+                    yield meta, records_chunk
+            else:
+                yield meta, records
 
 
 if __name__ == "__main__":
@@ -287,18 +324,16 @@ if __name__ == "__main__":
         publish_archives=args.publish_archives,
     )
 
-    records = []
+    records_by_name = RecordsByName()
 
     for f in streams_files.glob():
         logging.info(f"Parsing {f}")
         try:
-            for record in streams_files.file_records(f):
-                records.append(record)
+            for metadata, record in streams_files.file_records(f):
+                records_by_name.add(metadata, record)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
             streams_files.move_to_errors(f)
-
-    logging.info(f"Parsed {len(records)} records.")
 
     xmpp.connect()
 
@@ -307,16 +342,19 @@ if __name__ == "__main__":
     loop.run_until_complete(asyncio.wait_for(xmpp.session_started, 10))
 
     for sub in db_session.query(Subscription).all():
-        series_name = f"urn:dev:prm:{sub.usage_point_id}_{sub.series_name}"
-        sub_records = [r for r in records if r.name.startswith(series_name)]
-        if not sub_records:
-            continue
         # TODO move check to query
         if args.user and args.user != sub.user_id:
             continue
+        if sub.user_id == "cyril@lugan.fr":
+            # currently having a consent issue
+            continue
 
-        with sub.notification_checks():
-            for sub_records_chunk in chunks(sub_records, 1000):
-                loop.run_until_complete(xmpp.send_data(sub.user_id, sub_records_chunk))
+        series_name = f"urn:dev:prm:{sub.usage_point_id}_{sub.series_name}"
+
+        for metadata, records in records_by_name.get(
+            prefix=series_name, chunk_size=1000
+        ):
+            with sub.notification_checks():
+                loop.run_until_complete(xmpp.send_data(sub.user_id, metadata, records))
 
     xmpp.disconnect()
