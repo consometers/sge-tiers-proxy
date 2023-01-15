@@ -128,8 +128,9 @@ class StreamsFiles:
         filename = os.path.basename(path)
 
         # We do nothing with stream transfer companion metadata for now
-        if re.match(r"_svc.xml$", path):
+        if path.endswith("_svc.xml"):
             self.archive(path)
+            return
 
         filename_stream_patterns = {
             r"^ENEDIS_R171_.+\.zip$": sgeproxy.streams.R171,
@@ -321,9 +322,8 @@ if __name__ == "__main__":
     for f in streams_files.glob():
         logging.info(f"Parsing {f}")
         try:
-            for f in streams_files.glob():
-                for metadata, record in streams_files.file_records(f):
-                    records_by_name.add(metadata, record)
+            for metadata, record in streams_files.file_records(f):
+                records_by_name.add(metadata, record)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
             streams_files.move_to_errors(f)
@@ -337,6 +337,9 @@ if __name__ == "__main__":
     for sub in db_session.query(Subscription).all():
         # TODO move check to query
         if args.user and args.user != sub.user_id:
+            continue
+        if sub.user_id == "cyril@lugan.fr":
+            # currently having a consent issue
             continue
 
         series_name = f"urn:dev:prm:{sub.usage_point_id}_{sub.series_name}"
