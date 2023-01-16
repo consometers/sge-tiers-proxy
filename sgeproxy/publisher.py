@@ -227,14 +227,21 @@ class RecordsByName:
     def get(
         self, prefix: str = "", chunk_size: int = 0
     ) -> Iterable[Tuple[SgeProxyMeta, List[Record]]]:
+        # Group records by metadata to be sent together
+        records_by_meta: Dict[SgeProxyMeta, List[Record]] = {}
         for name, meta_with_records in self.records.items():
             meta, records = meta_with_records
             if name.startswith(prefix):
-                if chunk_size:
-                    for records_chunk in chunks(records, chunk_size):
-                        yield meta, records_chunk
+                if meta not in records_by_meta:
+                    records_by_meta[meta] = records.copy()
                 else:
-                    yield meta, records
+                    records_by_meta[meta].extend(records)
+        for meta, records in records_by_meta.items():
+            if chunk_size:
+                for records_chunk in chunks(records, chunk_size):
+                    yield meta, records_chunk
+            else:
+                yield meta, records
 
 
 if __name__ == "__main__":

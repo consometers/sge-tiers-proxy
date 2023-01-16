@@ -36,7 +36,12 @@ class TestStreams(unittest.TestCase):
         for metadata, records in records_by_name.get():
             print(metadata.to_dict())
             for record in records:
-                print(record)
+                self.assertEqual(record.unit, metadata.measurement.unit.value)
+                self.assertTrue(
+                    record.name.startswith(
+                        f"urn:dev:prm:{metadata.device.identifier.value}"
+                    )
+                )
 
     def test_day_prefix(self):
 
@@ -73,10 +78,26 @@ class TestStreams(unittest.TestCase):
         records_by_name = day_records()
         for metadata, records in records_by_name.get():
             data = Data(metadata=Metadata(metadata.to_dict()), records=records)
+            as_xml = data.to_xml()
+            as_xml = ET.tostring(as_xml, encoding="utf8", method="xml")
+            print(as_xml.decode("utf-8"))
 
-        as_xml = data.to_xml()
-        as_xml = ET.tostring(as_xml, encoding="utf8", method="xml")
-        print(as_xml)
+    def test_get_records_grouped_by_metadata(self):
+
+        NAME = "urn:dev:prm:30001444954220_consumption/energy/active/index"
+        # This series name will match with records named
+        #
+        # …_consumption/energy/active/index
+        # …_consumption/energy/active/index/distributor/hph
+        # …_consumption/energy/active/index/distributor/hch
+        # …
+        #
+        # We them all at once, as they share the same metadata
+
+        records_by_name = day_records()
+        records_by_meta = list(records_by_name.get(NAME))
+        self.assertTrue(len(records_by_meta) == 1)
+        self.assertTrue(len(records_by_meta[0][1]) > 0)
 
 
 if __name__ == "__main__":
