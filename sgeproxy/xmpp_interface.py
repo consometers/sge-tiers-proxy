@@ -30,10 +30,25 @@ def fail_with(message, code):
     )
 
 
+SAMPLE_IDENTIFIER = "urn:dev:prm:00000000000000_consumption/power/active/raw"
+
+
+def parse_identifier(identifier):
+    m = re.match(r"^urn:dev:prm:(\d{14})_(.*)$", identifier)
+    if not m:
+        raise XMPPError(
+            condition="bad-request",
+            etype="modify",
+            text="Unexpected record identifer "
+            + f"('{identifier}', should be like '{SAMPLE_IDENTIFIER}')",
+        )
+    usage_point_id = m.group(1)
+    series_name = m.group(2)
+
+    return usage_point_id, series_name
+
+
 class GetHistory:
-
-    SAMPLE_IDENTIFIER = "urn:dev:prm:00000000000000_consumption/power/active/raw"
-
     def __init__(self, xmpp_client, db_session_maker, data_provider):
         self.xmpp_client = xmpp_client
         self.db_session_maker = db_session_maker
@@ -90,17 +105,7 @@ class GetHistory:
 
         logging.info(f"{session['from']} {identifier} {start_time} {end_time}")
 
-        m = re.match(r"^urn:dev:prm:(\d{14})_(.*)$", identifier)
-        if not m:
-            raise XMPPError(
-                condition="bad-request",
-                etype="modify",
-                text="Unexpected record identifer "
-                + f"('{identifier}', should be like '{self.SAMPLE_IDENTIFIER}')",
-            )
-
-        usage_point_id = m.group(1)
-        measurement = m.group(2)
+        usage_point_id, measurement = parse_identifier(identifier)
 
         with self.db_session_maker() as db:
 
