@@ -30,6 +30,34 @@ class SgeError(Exception):
             return self.message
 
 
+class SgeErrorConverter:
+    """
+    Transform different inconsistant error types from SGE API to an SgeError
+    """
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, ex_type, ex_val, tb):
+        if ex_type is suds.WebFault:
+            res = ex_val.fault.detail.erreur.resultat
+            raise SgeError(res.value, res._code)
+        if ex_type is Exception:
+            # Suds client does not seem to handle HTTP errors very well,
+            # it ends up raising Exception((503, 'Service Unavailable'))
+            if (
+                len(ex_val.args) == 1
+                and len(ex_val.args[0]) == 2
+                and type(ex_val.args[0][0]) == int
+            ):
+                code = str(ex_val.args[0][0])
+                reason = str(ex_val.args[0][1])
+                raise SgeError(reason, code)
+
+        # Raise exception as-is if not handled above
+        return False
+
+
 class MeasurementApiSpec:
     def __init__(
         self,
@@ -257,20 +285,8 @@ class DetailedMeasurements:
             }
         )
 
-        try:
+        with SgeErrorConverter():
             resp = self.client.service.consulterMesuresDetaillees(demande)
-        except suds.WebFault as e:
-            res = e.fault.detail.erreur.resultat
-            raise SgeError(res.value, res._code)
-        except Exception as e:
-            # Suds client does not seem to handle HTTP errors very well,
-            # it ends up raising Exception((503, 'Service Unavailable'))
-            if len(e.args) == 1 and len(e.args[0]) == 2 and type(e.args[0][0]) == int:
-                code = str(e.args[0][0])
-                reason = str(e.args[0][1])
-                raise SgeError(reason, code)
-            else:
-                raise e
 
         class Quoalise(ElementBase):
             name = "quoalise"
