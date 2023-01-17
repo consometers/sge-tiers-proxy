@@ -10,7 +10,11 @@ from sqlalchemy.exc import IntegrityError
 import re
 
 from sgeproxy.sge import SgeError
-from sgeproxy.db import User, WebservicesCall, WebservicesCallStatus, now_local
+from sgeproxy.db import (
+    User,
+    WebservicesCall,
+    CheckedWebserviceCall,
+)
 
 
 # TODO convert to QuoaliseException, extending XMPPError
@@ -117,29 +121,20 @@ class GetHistory:
                 )
 
             try:
-                call_date = now_local()
-                consent = user.consent_for(db, usage_point_id, call_date)
-
+                consent = user.consent_for(db, usage_point_id)
                 call = WebservicesCall(
                     usage_point_id=usage_point_id,
                     user=user,
                     consent=consent,
-                    called_at=call_date,
                 )
-                db.add(call)
-                db.commit()
+                with CheckedWebserviceCall(call, db):
+                    data = self.data_provider(
+                        measurement, usage_point_id, start_time, end_time
+                    )
 
             except (PermissionError, IntegrityError) as e:
                 raise XMPPError(condition="not-authorized", text=str(e))
-
-            try:
-                data = self.data_provider(
-                    measurement, usage_point_id, start_time, end_time
-                )
-                call.status = WebservicesCallStatus.OK
             except SgeError as e:
-                call.status = WebservicesCallStatus.FAILED
-                call.error = e.code
                 return fail_with(e.message, e.code)
             except ValueError as e:
                 raise XMPPError(
@@ -147,9 +142,6 @@ class GetHistory:
                     etype="modify",
                     text=str(e),
                 )
-
-            finally:
-                db.commit()
 
         form = self.xmpp_client["xep_0004"].make_form(
             ftype="result", title="Get history"

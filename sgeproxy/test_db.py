@@ -10,10 +10,14 @@ from sgeproxy.db import (
     UsagePoint,
     Consent,
     WebservicesCall,
+    CheckedWebserviceCall,
+    WebservicesCallStatus,
     ConsentUsagePoint,
     Subscription,
     date_local,
+    now_local,
 )
+from sgeproxy.sge import SgeError
 
 import datetime as dt
 
@@ -117,7 +121,7 @@ class TestDbConsents(unittest.TestCase):
             issuer_name="The Springfield Nuclear Power Plant",
             issuer_type="company",
             begins_at=date_local(2020, 1, 1),
-            expires_at=date_local(2021, 3, 1),
+            expires_at=now_local() + dt.timedelta(days=1),
         )
         self.burns_consent_to_sister.usage_points.append(
             ConsentUsagePoint(usage_point=self.burns_usage_point, comment="Reactor #1")
@@ -349,6 +353,65 @@ class TestDbConsents(unittest.TestCase):
         with self.assertRaises(IntegrityError):
             self.session.commit()
 
+    def test_db_checked_webservices_call_ok(self):
+        """
+        Webservices calls are typically wrapped in a block that will fill
+        its status to OK on success.
+        """
+
+        call = WebservicesCall(
+            usage_point=self.burns_usage_point,
+            consent=self.burns_consent_to_sister,
+            user=self.sister,
+            webservice="ConsultationMesures",
+        )
+
+        self.assertIsNone(call.status)
+
+        with CheckedWebserviceCall(call, self.session):
+            # No error happen
+            pass
+
+        self.assertEqual(call.status, WebservicesCallStatus.OK)
+        self.assertIsNone(call.error)
+        self.assertTrue(call in self.session and not self.session.dirty)
+
+    def test_db_checked_webservices_call_sge_error(self):
+        """
+        Webservices calls are typically wrapped in a block that will fill
+        its status to FAILED on failure.
+        """
+
+        call = WebservicesCall(
+            usage_point=self.burns_usage_point,
+            consent=self.burns_consent_to_sister,
+            user=self.sister,
+            webservice="ConsultationMesures",
+        )
+
+        with self.assertRaises(SgeError):
+            with CheckedWebserviceCall(call, self.session):
+                raise SgeError(
+                    message="Une erreur technique est survenue", code="SGT500"
+                )
+
+        self.assertEqual(call.status, WebservicesCallStatus.FAILED)
+        self.assertEqual(call.error, "SGT500: Une erreur technique est survenue")
+        self.assertTrue(call in self.session and not self.session.dirty)
+
+    def test_db_checked_webservices_call_integrity_error(self):
+
+        call = WebservicesCall(
+            usage_point=self.burns_usage_point,
+            consent=self.homer_consent_to_alice,
+            user=self.sister,
+            webservice="ConsultationMesures",
+        )
+
+        with self.assertRaises(IntegrityError):
+            with CheckedWebserviceCall(call, self.session):
+                self.assertFalse(True, "Webservices must not be called")
+
     def test_db_find_consents(self):
 
         consent = self.alice.consent_for(
@@ -401,14 +464,9 @@ class TestDbConsents(unittest.TestCase):
                 self.session, self.homer_usage_point, date_local(2021, 1, 1)
             )
 
-        with self.assertRaises(PermissionError) as context:
-            self.sister.consent_for(
-                self.session, self.burns_usage_point, date_local(2021, 3, 1)
-            )
-
         self.assertTrue("is no longer valid" in str(context.exception))
 
-    def test_db_can_subscribe_when_conscent_is_valid(self):
+    def test_db_can_subscribe_when_consent_is_valid(self):
 
         subscription = Subscription(
             user=self.alice,
@@ -423,7 +481,7 @@ class TestDbConsents(unittest.TestCase):
         self.session.add(subscription)
         self.session.commit()
 
-    def test_db_can_notify_when_conscent_is_valid(self):
+    def test_db_can_notify_when_consent_is_valid(self):
 
         subscription = Subscription(
             user=self.alice,

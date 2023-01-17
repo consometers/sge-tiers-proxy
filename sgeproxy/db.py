@@ -238,8 +238,32 @@ class WebservicesCall(Base):
         {},
     )
 
-    def register(self, webservice, user_id, usage_point_id, date_from, date_to):
-        pass
+
+class CheckedWebserviceCall:
+    def __init__(
+        self,
+        call,
+        db_session: Session,
+    ):
+        self.call = call
+        self.db_session = db_session
+
+    def __enter__(self):
+        self.call.called_at = now_local()
+        self.db_session.add(self.call)
+        self.db_session.commit()
+
+    def __exit__(self, ex_type, ex_val, tb):
+        if ex_type is None:
+            self.call.status = WebservicesCallStatus.OK
+        else:
+            self.call.status = WebservicesCallStatus.FAILED
+            self.call.error = str(ex_val)
+
+        self.db_session.commit()
+
+        # Raise exception
+        return False
 
 
 class SubscriptionStatus(enum.Enum):
