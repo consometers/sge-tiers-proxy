@@ -9,11 +9,13 @@ from sqlalchemy.exc import IntegrityError
 
 import re
 
-from sgeproxy.sge import SgeError
+from sgeproxy.sge import SgeError, DetailedMeasurements
 from sgeproxy.db import (
     User,
     WebservicesCall,
     CheckedWebserviceCall,
+    WebservicesCallStatus,
+    now_local,
 )
 
 
@@ -123,6 +125,7 @@ class GetHistory:
             try:
                 consent = user.consent_for(db, usage_point_id)
                 call = WebservicesCall(
+                    webservice=DetailedMeasurements.SERVICE_NAME,
                     usage_point_id=usage_point_id,
                     user=user,
                     consent=consent,
@@ -142,6 +145,100 @@ class GetHistory:
                     etype="modify",
                     text=str(e),
                 )
+
+        form = self.xmpp_client["xep_0004"].make_form(
+            ftype="result", title="Get history"
+        )
+
+        form.addField(
+            var="result", ftype="fixed", label=f"Get {identifier}", value="Success"
+        )
+
+        session["next"] = None
+        session["payload"] = [form, data]
+
+        return session
+
+
+class Subscribe:
+    def __init__(self, xmpp_client, db_session_maker, technichal_data_provider):
+        self.xmpp_client = xmpp_client
+        self.db_session_maker = db_session_maker
+        self.technichal_data = technichal_data_provider
+
+    def handle_request(self, iq, session):
+
+        if iq["command"].xml:  # has subelements
+            return self.handle_submit(session["payload"], session)
+
+        form = self.xmpp_client["xep_0004"].make_form(ftype="form", title="Subscribe")
+
+        form.addField(
+            var="identifier",
+            ftype="text-single",
+            label="Identifier",
+            required=True,
+            value=SAMPLE_IDENTIFIER,
+        )
+
+        session["payload"] = form
+        session["next"] = self.handle_submit
+
+        return session
+
+    def handle_submit(self, payload, session):
+
+        identifier = payload["values"]["identifier"]
+
+        logging.info(f"{session['from']} {identifier} subscribe")
+
+        usage_point_id, measurement = parse_identifier(identifier)
+
+        with self.db_session_maker() as db:
+
+            user = db.query(User).get(session["from"].bare)
+            if user is None:
+                raise XMPPError(
+                    condition="not-authorized",
+                    text=f'Unknown user {session["from"].bare}',
+                )
+
+            try:
+                call_date = now_local()
+                consent = user.consent_for(db, usage_point_id, call_date)
+
+                call = WebservicesCall(
+                    webservice=DetailedMeasurements.SERVICE_NAME,
+                    usage_point_id=usage_point_id,
+                    user=user,
+                    consent=consent,
+                    called_at=call_date,
+                )
+                db.add(call)
+                db.commit()
+
+            except (PermissionError, IntegrityError) as e:
+                raise XMPPError(condition="not-authorized", text=str(e))
+
+            try:
+                data = None
+                # data = self.data_provider(
+                #     measurement, usage_point_id, start_time, end_time
+                # )
+                call.status = WebservicesCallStatus.OK
+            except SgeError as e:
+                call.status = WebservicesCallStatus.FAILED
+                call.error = e.code
+                return fail_with(e.message, e.code)
+            except ValueError as e:
+                raise XMPPError(
+                    condition="bad-request",
+                    etype="modify",
+                    text=str(e),
+                )
+
+            finally:
+                db.commit()
 
         form = self.xmpp_client["xep_0004"].make_form(
             ftype="result", title="Get history"

@@ -1,6 +1,7 @@
 BEGIN;
 
 -- Must be provided to use some SGE Tiers APIs…
+-- FIXME(cyril) change to individual if not needed for subscriptions
 CREATE TYPE consent_issuer_type AS ENUM ('female', 'male', 'company');
 
 CREATE TABLE consents (

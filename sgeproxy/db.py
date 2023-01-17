@@ -266,6 +266,18 @@ class CheckedWebserviceCall:
         return False
 
 
+subscriptions_calls_association = Table(
+    "subscriptions_calls",
+    Base.metadata,
+    Column("subscription_id", ForeignKey("subscriptions.id"), primary_key=True),
+    Column(
+        "webservices_calls_subscriptions_id",
+        ForeignKey("webservices_calls_subscriptions.id"),
+        primary_key=True,
+    ),
+)
+
+
 class SubscriptionStatus(enum.Enum):
     OK = "OK"
     FAILED = "FAILED"
@@ -291,6 +303,13 @@ class Subscription(Base):
     user = relationship("User", back_populates="subscriptions")
     usage_point = relationship("UsagePoint", back_populates="subscriptions")
     consent = relationship("Consent", back_populates="subscriptions")
+
+    webservices_calls_subscriptions = relationship(
+        # "WebservicesCallsSubscriptions",
+        # secondary=subscriptions_calls_association, back_populates="subscriptions"
+        "WebservicesCallsSubscriptions",
+        secondary=subscriptions_calls_association,
+    )
 
     __table_args__: Any = (
         ForeignKeyConstraint(
@@ -322,3 +341,40 @@ class SubscriptionNotificationContext:
         else:
             self.sub.status = SubscriptionStatus.FAILED
         self.session.commit()
+
+
+class WebservicesCallsSubscriptionType(enum.Enum):
+    CONSUMPTION_IDX = ("CONSUMPTION_IDX",)
+    CONSUMPTION_CDC_RAW = ("CONSUMPTION_CDC_RAW",)
+    CONSUMPTION_CDC_CORRECTED = ("CONSUMPTION_CDC_CORRECTED",)
+    CONSUMPTION_CDC_ENABLE = ("CONSUMPTION_CDC_ENABLE",)
+    PRODUCTION_IDX = ("PRODUCTION_IDX",)
+    PRODUCTION_CDC_RAW = ("PRODUCTION_CDC_RAW",)
+    PRODUCTION_CDC_CORRECTED = ("PRODUCTION_CDC_CORRECTED",)
+    PRODUCTION_CDC_ENABLE = "PRODUCTION_CDC_ENABLE"
+
+
+class WebservicesCallsSubscriptions(Base):
+    __tablename__ = "webservices_calls_subscriptions"
+
+    id = Column(Integer, primary_key=True)
+
+    webservices_call_id = Column(Integer)
+    consent_expires_at = Column(TZDateTime)
+
+    call_type = Column(Enum(WebservicesCallsSubscriptionType))
+
+    expires_at = Column(TZDateTime)
+    call_id = Column(Integer)
+
+    # webservices_call = relationship("WebservicesCall",
+    # back_populates="subscription_call")
+    webservices_call = relationship("WebservicesCall")
+
+    __table_args__: Any = (
+        ForeignKeyConstraint(
+            ["webservices_call_id", "consent_expires_at"],
+            ["webservices_calls.id", "webservices_calls.consent_expires_at"],
+        ),
+        {},
+    )

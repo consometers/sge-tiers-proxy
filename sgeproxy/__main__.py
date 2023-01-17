@@ -26,6 +26,7 @@ async def main(conf, sge_credentials):
     db_session_maker = sessionmaker(bind=db_engine)
 
     detailed_measurements = sgeproxy.sge.DetailedMeasurements(sge_credentials)
+    technical_data = sgeproxy.sge.TechnicalData(sge_credentials)
 
     xmpp_client = slixmpp.ClientXMPP(conf["xmpp"]["full_jid"], conf["xmpp"]["password"])
 
@@ -53,11 +54,18 @@ async def main(conf, sge_credentials):
 
     xmpp_client.send_presence()
 
-    handler = sgeproxy.xmpp_interface.GetHistory(
+    history_handler = sgeproxy.xmpp_interface.GetHistory(
         xmpp_client, db_session_maker, detailed_measurements.get_measurements
     )
     xmpp_client["xep_0050"].add_command(
-        node="get_history", name="Get history", handler=handler.handle_request
+        node="get_history", name="Get history", handler=history_handler.handle_request
+    )
+
+    subscribe_handler = sgeproxy.xmpp_interface.Subscribe(
+        xmpp_client, db_session_maker, technical_data.get_technical_data
+    )
+    xmpp_client["xep_0050"].add_command(
+        node="subscribe", name="Subscribe", handler=subscribe_handler.handle_request
     )
 
 

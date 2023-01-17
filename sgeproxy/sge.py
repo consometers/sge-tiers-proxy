@@ -74,6 +74,8 @@ class DetailedMeasurements:
 
     # TODO(cyril) ensure Python >= 3.7 to preserve dict order
 
+    SERVICE_NAME = "ConsultationMesuresDetaillees-v2.0"
+
     MEASUREMENTS: Dict[str, MeasurementApiSpec] = {
         # -------------------------
         # Courbes au pas enregistré
@@ -247,7 +249,7 @@ class DetailedMeasurements:
         homologation = credentials["environment"] != "production"
 
         self.client = lowatt_enedis.get_client(
-            "ConsultationMesuresDetaillees-v2.0", certificate, private_key, homologation
+            self.SERVICE_NAME, certificate, private_key, homologation
         )
 
     # end date included (!= SGE API)
@@ -361,3 +363,35 @@ class DetailedMeasurements:
             sensml.append(senml)
 
         return quoalise_element
+
+
+class TechnicalData:
+    def __init__(self, credentials: sgeproxy.config.File):
+
+        self.login = credentials["login"]
+        certificate = credentials.abspath(credentials["certificate"])
+        private_key = credentials.abspath(credentials["private-key"])
+        homologation = credentials["environment"] != "production"
+
+        self.client = lowatt_enedis.get_client(
+            "ConsultationDonneesTechniquesContractuellesV1.0",
+            certificate,
+            private_key,
+            homologation,
+        )
+
+    def get_technical_data(
+        self,
+        usage_point_id: str,
+    ) -> Any:
+
+        params = {
+            "pointId": usage_point_id,
+            "loginUtilisateur": self.login,
+            "autorisationClient": True,
+        }
+
+        with SgeErrorConverter():
+            resp = self.client.service.consulterDonneesTechniquesContractuelles(params)
+
+        return resp
