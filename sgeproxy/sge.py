@@ -14,6 +14,7 @@ from slixmpp.xmlstream import ElementBase, ET
 import pytz
 
 import sgeproxy.config
+from sgeproxy.db import SubscriptionType, now_local
 
 PARIS_TZ = timezone("Europe/Paris")
 
@@ -366,6 +367,9 @@ class DetailedMeasurements:
 
 
 class TechnicalData:
+
+    SERVICE_NAME = "ConsultationDonneesTechniquesContractuelles-v1.0"
+
     def __init__(self, credentials: sgeproxy.config.File):
 
         self.login = credentials["login"]
@@ -374,7 +378,7 @@ class TechnicalData:
         homologation = credentials["environment"] != "production"
 
         self.client = lowatt_enedis.get_client(
-            "ConsultationDonneesTechniquesContractuellesV1.0",
+            self.SERVICE_NAME,
             certificate,
             private_key,
             homologation,
@@ -385,13 +389,198 @@ class TechnicalData:
         usage_point_id: str,
     ) -> Any:
 
-        params = {
-            "pointId": usage_point_id,
-            "loginUtilisateur": self.login,
-            "autorisationClient": True,
+        with SgeErrorConverter():
+            resp = self.client.service.consulterDonneesTechniquesContractuelles(
+                pointId=usage_point_id,
+                loginUtilisateur=self.login,
+                autorisationClient="true",
+            )
+
+        return resp
+
+
+def sub_params(updates):
+    # Request is considered malformed when params are not ordered
+    sorted_params = {
+        "dateDebut": None,
+        "dateFin": None,
+        "declarationAccordClient": {"accord": "true"},
+        "mesuresTypeCode": None,
+        "soutirage": "true",
+        "injection": "false",
+        "mesuresPas": None,
+        "mesuresCorrigees": "false",
+        "transmissionRecurrente": "true",
+        "periodiciteTransmission": "P1D",
+    }
+    sorted_params.update(updates)
+    return sorted_params
+
+
+class Subscribe:
+
+    SERVICE_NAME = "CommandeCollectePublicationMesures-v3.0"
+
+    PARAMS = {
+        SubscriptionType.CONSUMPTION_IDX: sub_params(
+            {
+                "mesuresTypeCode": "IDX",
+                "soutirage": "true",
+                "injection": "false",
+            }
+        ),
+        SubscriptionType.CONSUMPTION_CDC_RAW: sub_params(
+            {
+                "mesuresTypeCode": "CDC",
+                "soutirage": "true",
+                "injection": "false",
+            }
+        ),
+        SubscriptionType.CONSUMPTION_CDC_CORRECTED: sub_params(
+            {
+                "mesuresTypeCode": "CDC",
+                "soutirage": "true",
+                "injection": "false",
+            }
+        ),
+        SubscriptionType.CONSUMPTION_CDC_ENABLE: sub_params(
+            {
+                "mesuresTypeCode": "CDC",
+                "soutirage": "true",
+                "injection": "false",
+                "transmissionRecurrente": "false",
+            }
+        ),
+        SubscriptionType.PRODUCTION_IDX: sub_params(
+            {
+                "mesuresTypeCode": "IDX",
+                "soutirage": "false",
+                "injection": "true",
+            }
+        ),
+        SubscriptionType.PRODUCTION_CDC_RAW: sub_params(
+            {
+                "mesuresTypeCode": "CDC",
+                "soutirage": "false",
+                "injection": "true",
+            }
+        ),
+        SubscriptionType.PRODUCTION_CDC_CORRECTED: sub_params(
+            {
+                "mesuresTypeCode": "CDC",
+                "soutirage": "false",
+                "injection": "true",
+                "mesuresCorrigees": "true",
+            }
+        ),
+        SubscriptionType.PRODUCTION_CDC_ENABLE: sub_params(
+            {
+                "mesuresTypeCode": "CDC",
+                "soutirage": "false",
+                "injection": "true",
+                "transmissionRecurrente": "false",
+            }
+        ),
+    }
+
+    def __init__(self, credentials: sgeproxy.config.File):
+
+        self.login = credentials["login"]
+        self.contract = credentials["contract-id"]
+        certificate = credentials.abspath(credentials["certificate"])
+        private_key = credentials.abspath(credentials["private-key"])
+        homologation = credentials["environment"] != "production"
+
+        self.client = lowatt_enedis.get_client(
+            self.SERVICE_NAME,
+            certificate,
+            private_key,
+            homologation,
+        )
+
+    def subscribe(
+        self,
+        usage_point_id: str,
+        call_type: SubscriptionType,
+        expires_at: dt.datetime,
+        is_linky: bool,
+        consent_issuer_is_company: bool,
+        consent_issuer_name,
+    ) -> Any:
+
+        params = self.PARAMS[call_type]
+        params["dateDebut"] = now_local().astimezone(PARIS_TZ).date().isoformat()
+        params["dateFin"] = expires_at.astimezone(PARIS_TZ).date().isoformat()
+
+        if consent_issuer_is_company:
+            params["declarationAccordClient"]["personneMorale"] = {
+                "denominationSociale": consent_issuer_name
+            }
+        else:
+            params["declarationAccordClient"]["personnePhysique"] = {
+                "nom": consent_issuer_name
+            }
+
+        if params["mesuresTypeCode"] == "IDX":
+            params["mesuresPas"] = "P1D"
+        elif is_linky:
+            params["mesuresPas"] = "PT30M"
+        else:
+            params["mesuresPas"] = "PT10M"
+
+        demande = {
+            "donneesGenerales": {
+                "objetCode": "AME",
+                "pointId": usage_point_id,
+                "initiateurLogin": self.login,
+                "contratId": self.contract,
+            },
+            "accesMesures": params,
         }
 
         with SgeErrorConverter():
-            resp = self.client.service.consulterDonneesTechniquesContractuelles(params)
+            resp = self.client.service.commanderCollectePublicationMesures(demande)
+
+        return resp
+
+
+class Unsubscribe:
+
+    SERVICE_NAME = "CommandeArretServiceSouscritMesures-v1.0"
+
+    def __init__(self, credentials: sgeproxy.config.File):
+
+        self.login = credentials["login"]
+        self.contract = credentials["contract-id"]
+        certificate = credentials.abspath(credentials["certificate"])
+        private_key = credentials.abspath(credentials["private-key"])
+        homologation = credentials["environment"] != "production"
+
+        self.client = lowatt_enedis.get_client(
+            self.SERVICE_NAME,
+            certificate,
+            private_key,
+            homologation,
+        )
+
+    def unsubscribe(
+        self,
+        usage_point_id: str,
+        call_id: int,
+    ) -> Any:
+
+        demande = {
+            "donneesGenerales": {
+                # "refExterne": "",
+                "objetCode": "ASS",
+                "pointId": usage_point_id,
+                "initiateurLogin": self.login,
+                "contratId": self.contract,
+            },
+            "arretServiceSourscrit": {"serviceSouscritId": call_id},
+        }
+
+        with SgeErrorConverter():
+            resp = self.client.service.commanderArretServiceSouscritMesures(demande)
 
         return resp

@@ -27,6 +27,8 @@ async def main(conf, sge_credentials):
 
     detailed_measurements = sgeproxy.sge.DetailedMeasurements(sge_credentials)
     technical_data = sgeproxy.sge.TechnicalData(sge_credentials)
+    subscribe = sgeproxy.sge.Subscribe(sge_credentials)
+    unsubscribe = sgeproxy.sge.Unsubscribe(sge_credentials)
 
     xmpp_client = slixmpp.ClientXMPP(conf["xmpp"]["full_jid"], conf["xmpp"]["password"])
 
@@ -62,10 +64,22 @@ async def main(conf, sge_credentials):
     )
 
     subscribe_handler = sgeproxy.xmpp_interface.Subscribe(
-        xmpp_client, db_session_maker, technical_data.get_technical_data
+        xmpp_client,
+        db_session_maker,
+        technical_data.get_technical_data,
+        subscribe.subscribe,
     )
     xmpp_client["xep_0050"].add_command(
         node="subscribe", name="Subscribe", handler=subscribe_handler.handle_request
+    )
+
+    unsubscribe_handler = sgeproxy.xmpp_interface.Unsubscribe(
+        xmpp_client, db_session_maker, unsubscribe.unsubscribe
+    )
+    xmpp_client["xep_0050"].add_command(
+        node="unsubscribe",
+        name="Unsubscribe",
+        handler=unsubscribe_handler.handle_request,
     )
 
 

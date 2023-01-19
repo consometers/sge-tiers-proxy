@@ -19,7 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
-from sqlalchemy.sql import text
+from sqlalchemy.sql import text, exists
 
 Base: Any = declarative_base()
 
@@ -169,10 +169,25 @@ class User(Base):
         return query.first()
 
 
+class UsagePointSegment(enum.Enum):
+    C1 = "C1"
+    C2 = "C2"
+    C3 = "C3"
+    C4 = "C4"
+    C5 = "C5"
+    P1 = "P1"
+    P2 = "P2"
+    P3 = "P3"
+    P4 = "P4"
+
+
 class UsagePoint(Base):
     __tablename__ = "usage_points"
 
     id = Column(String(14), primary_key=True)
+
+    segment = Column(Enum(UsagePointSegment))
+    service_level = Column(Integer)
 
     webservices_calls = relationship("WebservicesCall", back_populates="usage_point")
 
@@ -182,12 +197,17 @@ class UsagePoint(Base):
         return f"<UsagePoint(id='{self.id}')>"
 
 
+class ConsentIssuerType(enum.Enum):
+    INDIVIDUAL = "INDIVIDUAL"
+    COMPANY = "COMPANY"
+
+
 class Consent(Base):
     __tablename__ = "consents"
 
     id = Column(Integer, primary_key=True)
     issuer_name = Column(Text)
-    issuer_type = Column(String())
+    issuer_type = Column(Enum(ConsentIssuerType))
     begins_at = Column(TZDateTime)
     expires_at = Column(TZDateTime)
     created_at = Column(TZDateTime, default=now_local())
@@ -240,6 +260,20 @@ class WebservicesCall(Base):
 
 
 class CheckedWebserviceCall:
+    """
+    Prevents to make a not allowed call.
+
+    - add the call to the session and commit
+    - if it raises an integrity error
+      - do not exectute the enclosed statement (meant to execute the actual
+        webservice call)
+    - else exectute the enclosed statement
+      - if it raises an exception, set the call status to failed and fill the
+        error field
+      - else set the call status to ok
+      - commit
+    """
+
     def __init__(
         self,
         call,
@@ -289,7 +323,7 @@ class Subscription(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(String(2049), ForeignKey("users.bare_jid"))
     series_name = Column(Text)
-    subscribed_at = Column(TZDateTime)
+    subscribed_at = Column(TZDateTime, default=now_local())
     notified_at = Column(TZDateTime)
 
     usage_point_id = Column(String(14), ForeignKey("usage_points.id"))
@@ -304,11 +338,10 @@ class Subscription(Base):
     usage_point = relationship("UsagePoint", back_populates="subscriptions")
     consent = relationship("Consent", back_populates="subscriptions")
 
-    webservices_calls_subscriptions = relationship(
-        # "WebservicesCallsSubscriptions",
-        # secondary=subscriptions_calls_association, back_populates="subscriptions"
+    webservices_calls = relationship(
         "WebservicesCallsSubscriptions",
         secondary=subscriptions_calls_association,
+        back_populates="subscriptions",
     )
 
     __table_args__: Any = (
@@ -343,14 +376,14 @@ class SubscriptionNotificationContext:
         self.session.commit()
 
 
-class WebservicesCallsSubscriptionType(enum.Enum):
-    CONSUMPTION_IDX = ("CONSUMPTION_IDX",)
-    CONSUMPTION_CDC_RAW = ("CONSUMPTION_CDC_RAW",)
-    CONSUMPTION_CDC_CORRECTED = ("CONSUMPTION_CDC_CORRECTED",)
-    CONSUMPTION_CDC_ENABLE = ("CONSUMPTION_CDC_ENABLE",)
-    PRODUCTION_IDX = ("PRODUCTION_IDX",)
-    PRODUCTION_CDC_RAW = ("PRODUCTION_CDC_RAW",)
-    PRODUCTION_CDC_CORRECTED = ("PRODUCTION_CDC_CORRECTED",)
+class SubscriptionType(enum.Enum):
+    CONSUMPTION_IDX = "CONSUMPTION_IDX"
+    CONSUMPTION_CDC_RAW = "CONSUMPTION_CDC_RAW"
+    CONSUMPTION_CDC_CORRECTED = "CONSUMPTION_CDC_CORRECTED"
+    CONSUMPTION_CDC_ENABLE = "CONSUMPTION_CDC_ENABLE"
+    PRODUCTION_IDX = "PRODUCTION_IDX"
+    PRODUCTION_CDC_RAW = "PRODUCTION_CDC_RAW"
+    PRODUCTION_CDC_CORRECTED = "PRODUCTION_CDC_CORRECTED"
     PRODUCTION_CDC_ENABLE = "PRODUCTION_CDC_ENABLE"
 
 
@@ -362,7 +395,7 @@ class WebservicesCallsSubscriptions(Base):
     webservices_call_id = Column(Integer)
     consent_expires_at = Column(TZDateTime)
 
-    call_type = Column(Enum(WebservicesCallsSubscriptionType))
+    call_type = Column(Enum(SubscriptionType))
 
     expires_at = Column(TZDateTime)
     call_id = Column(Integer)
@@ -371,6 +404,12 @@ class WebservicesCallsSubscriptions(Base):
     # back_populates="subscription_call")
     webservices_call = relationship("WebservicesCall")
 
+    subscriptions = relationship(
+        "Subscription",
+        secondary=subscriptions_calls_association,
+        back_populates="webservices_calls",
+    )
+
     __table_args__: Any = (
         ForeignKeyConstraint(
             ["webservices_call_id", "consent_expires_at"],
@@ -378,3 +417,28 @@ class WebservicesCallsSubscriptions(Base):
         ),
         {},
     )
+
+    @staticmethod
+    def query_unused(session):
+        stmt = exists().where(
+            subscriptions_calls_association.c.webservices_calls_subscriptions_id
+            == WebservicesCallsSubscriptions.id
+        )
+        return session.query(WebservicesCallsSubscriptions).filter(~stmt)
+
+    @staticmethod
+    def find_existing(
+        session,
+        usage_point_id: str,
+        call_type: SubscriptionType,
+        call_date=now_local(),
+    ):
+        query = (
+            session.query(WebservicesCallsSubscriptions)
+            .join(subscriptions_calls_association)
+            .join(WebservicesCall)
+            .filter(WebservicesCall.usage_point_id == usage_point_id)
+            .filter(WebservicesCallsSubscriptions.call_type == call_type)
+            .filter(WebservicesCallsSubscriptions.expires_at > call_date)
+        )
+        return query.first()

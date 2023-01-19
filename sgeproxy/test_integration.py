@@ -144,6 +144,20 @@ class TestGetMeasurement(unittest.TestCase):
 
         self.assertEqual(computed_energy_wh, total_energy_wh)
 
+    def test_subscribe(self):
+
+        measurement = (
+            f"urn:dev:prm:{self.usage_point['id']}_consumption/power/active/raw"
+        )
+        self.client.unsubscribe(self.proxy, measurement)
+        self.client.subscribe(self.proxy, measurement)
+
+    def test_subscribe_unsupported(self):
+
+        measurement = f"urn:dev:prm:{self.usage_point['id']}_random_stuff"
+        with self.assertRaises(quoalise.BadRequest):
+            self.client.subscribe(self.proxy, measurement)
+
 
 if __name__ == "__main__":
 

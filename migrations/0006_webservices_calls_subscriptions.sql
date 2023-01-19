@@ -11,7 +11,7 @@ CREATE TYPE webservices_calls_subscription_type AS ENUM (
     'PRODUCTION_CDC_ENABLE'
 );
 
--- Force non null webservice name
+-- Force non null webservice name (it was not intended to be possible)
 
 UPDATE
     webservices_calls
@@ -25,7 +25,7 @@ ALTER COLUMN
     webservice
         SET NOT NULL;
 
--- Compound key to be used to ensure subscription calls validity
+-- Compound key to be used to ensure subscription cannot expire after consent
 
 ALTER TABLE webservices_calls
     ADD UNIQUE (id, consent_expires_at);
@@ -86,6 +86,35 @@ CREATE TABLE subscriptions_calls (
     webservices_calls_subscriptions_id INT REFERENCES webservices_calls_subscriptions (id) NOT NULL,
     PRIMARY KEY (subscription_id, webservices_calls_subscriptions_id)
 );
+
+-- Add segment info to usage point, needed to guess some parameters of the
+-- subscription webservice
+
+CREATE TYPE usage_point_segment_type AS ENUM (
+    'C1',
+    'C2',
+    'C3',
+    'C4',
+    'C5',
+    'P1',
+    'P2',
+    'P3',
+    'P4'
+);
+
+ALTER TABLE usage_points 
+ADD COLUMN segment usage_point_segment_type,
+ADD COLUMN service_level int;
+
+-- Change consent_issuer_type, gender field does not seem to be mandatory
+-- TODO did not manage to remove value female
+
+ALTER TYPE consent_issuer_type RENAME VALUE 'male' TO 'INDIVIDUAL';
+ALTER TYPE consent_issuer_type RENAME VALUE 'company' TO 'COMPANY';
+
+UPDATE consents
+SET issuer_type = 'INDIVIDUAL'
+WHERE issuer_type = 'female';
 
 INSERT INTO migrations (version) VALUES (6);
 
