@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     TypeDecorator,
+    Boolean,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
@@ -134,11 +135,38 @@ class User(Base):
     def __repr__(self):
         return f"<User(bare_jid='{self.bare_jid}')>"
 
-    # TODO(cyril) get session from object
     def consent_for(self, session, usage_point, call_date=now_local()):
 
         if type(usage_point) == UsagePoint:
             usage_point = usage_point.id
+
+        try:
+            return self.restricted_consent_for(session, usage_point, call_date)
+        except PermissionError:
+            # No restricted consent can be used for this point,
+            # check if there is an open one.
+            open_consent = (
+                session.query(Consent)
+                .join(consents_users_association)
+                .join(User)
+                .filter(consents_users_association.c.user_id == self.bare_jid)
+                .filter(Consent.is_open)
+                .filter(Consent.begins_at <= call_date)
+                .filter(Consent.expires_at > call_date)
+            ).first()
+
+            if open_consent is not None:
+                open_consent.usage_points.append(
+                    ConsentUsagePoint(
+                        usage_point=UsagePoint.find_or_create(session, usage_point)
+                    )
+                )
+                return open_consent
+
+            raise
+
+    # TODO(cyril) get session from object
+    def restricted_consent_for(self, session, usage_point, call_date):
 
         query = (
             session.query(Consent)
@@ -196,6 +224,16 @@ class UsagePoint(Base):
     def __repr__(self):
         return f"<UsagePoint(id='{self.id}')>"
 
+    @staticmethod
+    def find_or_create(session: Session, usage_point_id: str):
+        found = session.query(UsagePoint).get(usage_point_id)
+        if found is not None:
+            return found
+
+        created = UsagePoint(id=usage_point_id)
+        session.add(created)
+        return created
+
 
 class ConsentIssuerType(enum.Enum):
     INDIVIDUAL = "INDIVIDUAL"
@@ -208,6 +246,7 @@ class Consent(Base):
     id = Column(Integer, primary_key=True)
     issuer_name = Column(Text)
     issuer_type = Column(Enum(ConsentIssuerType))
+    is_open = Column(Boolean, default=False)
     begins_at = Column(TZDateTime)
     expires_at = Column(TZDateTime)
     created_at = Column(TZDateTime, default=now_local())

@@ -1,0 +1,8 @@
+BEGIN;
+
+ALTER TABLE consents
+ADD COLUMN is_open BOOLEAN DEFAULT FALSE;
+
+INSERT INTO migrations (version) VALUES (7);
+
+COMMIT;

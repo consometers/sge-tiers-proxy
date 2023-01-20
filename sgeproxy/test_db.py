@@ -133,6 +133,18 @@ class TestDbIntegrity(unittest.TestCase):
 
         self.sister.consents.append(self.burns_consent_to_sister)
 
+        self.genius = User(bare_jid="genius@realworld.lit")
+        self.session.add(self.genius)
+
+        self.genius_open_consent = Consent(
+            issuer_name="Genius",
+            issuer_type="COMPANY",
+            is_open=True,
+            begins_at=date_local(2020, 1, 1),
+            expires_at=date_local(2021, 1, 1),
+        )
+        self.genius.consents.append(self.genius_open_consent)
+
         self.session.commit()
 
     def tearDown(self):
@@ -229,6 +241,53 @@ class TestDbIntegrity(unittest.TestCase):
         self.assertTrue(
             'is not present in table "consents_usage_points"' in str(context.exception)
         )
+
+    def test_db_denies_call_for_an_out_of_scope_usage_point_when_consent_is_open(self):
+        """
+        Genius consent allows him to access any usage point, but his open consent
+        still need to be associated with those.
+        is_open is a flag telling that we can add the usage point to a the scope
+        of a consent when it is open.
+        """
+
+        WebservicesCall(
+            usage_point=self.burns_usage_point,
+            consent=self.genius_open_consent,
+            user=self.genius,
+            webservice="ConsultationMesures",
+            called_at=date_local(2020, 1, 2),
+        )
+
+        with self.assertRaises(IntegrityError) as context:
+            self.session.commit()
+
+        self.assertTrue(
+            'is not present in table "consents_usage_points"' in str(context.exception)
+        )
+
+    def test_db_allows_call_for_a_usage_point_when_consent_is_open(self):
+        """
+        Genius consent allows him to access any usage point, but his open consent
+        still need to be associated with those.
+        is_open is a flag telling that we can add the usage point to a the scope
+        of a consent when it is open.
+        """
+
+        # consent_for helper will automatically add the usage point to consent
+        # scope when it is open.
+        consent = self.genius.consent_for(
+            self.session, self.burns_usage_point, date_local(2020, 1, 2)
+        )
+
+        WebservicesCall(
+            usage_point=self.burns_usage_point,
+            consent=consent,
+            user=self.genius,
+            webservice="ConsultationMesures",
+            called_at=date_local(2020, 1, 2),
+        )
+
+        self.session.commit()
 
     def test_db_denies_call_with_no_usage_point(self):
 
