@@ -262,6 +262,7 @@ class Subscribe:
 
         if measurement not in [
             "consumption/energy/active/index",
+            "consumption/power/apparent/max",
             "consumption/power/active/raw",
         ]:
             raise XMPPError(
@@ -286,96 +287,106 @@ class Subscribe:
                 .filter(Subscription.series_name == measurement)
             ).first()
 
-            # TODO(cyril) maybe just return ok instead
             if subscription is not None:
-                raise XMPPError(
-                    condition="bad-request",
-                    etype="modify",
-                    text=f"Already subscribed to {identifier}",
-                )
+                # Return ok for now when already subscribed
+                # raise XMPPError(
+                #     condition="bad-request",
+                #     etype="modify",
+                #     text=f"Already subscribed to {identifier}",
+                # )
+                pass
+            else:
+                try:
+                    consent = user.consent_for(db, usage_point_id)
+                    usage_point = db.query(UsagePoint).get(usage_point_id)
 
-            try:
-                consent = user.consent_for(db, usage_point_id)
-                usage_point = db.query(UsagePoint).get(usage_point_id)
+                    if usage_point.segment is None or usage_point.service_level is None:
 
-                if usage_point.segment is None or usage_point.service_level is None:
+                        call = WebservicesCall(
+                            webservice=TechnicalData.SERVICE_NAME,
+                            usage_point_id=usage_point_id,
+                            user=user,
+                            consent=consent,
+                        )
+                        with CheckedWebserviceCall(call, db):
+                            logging.info(
+                                f"{session['from']} {identifier} technical data"
+                            )
+                            technical_data = self.technichal_data_provider(
+                                usage_point_id
+                            )
 
-                    call = WebservicesCall(
-                        webservice=TechnicalData.SERVICE_NAME,
-                        usage_point_id=usage_point_id,
-                        user=user,
-                        consent=consent,
-                    )
-                    with CheckedWebserviceCall(call, db):
-                        logging.info(f"{session['from']} {identifier} technical data")
-                        technical_data = self.technichal_data_provider(usage_point_id)
+                        usage_point.segment = UsagePointSegment[
+                            technical_data.donneesGenerales.segment.libelle
+                        ]
+                        usage_point.service_level = int(
+                            technical_data.donneesGenerales.niveauOuvertureServices
+                        )
 
-                    usage_point.segment = UsagePointSegment[
-                        technical_data.donneesGenerales.segment.libelle
-                    ]
-                    usage_point.service_level = int(
-                        technical_data.donneesGenerales.niveauOuvertureServices
-                    )
-
-                subscription = Subscription(
-                    user=user,
-                    usage_point=usage_point,
-                    series_name=measurement,
-                    consent=consent,
-                )
-
-                db.commit()
-
-                if measurement == "consumption/power/active/raw":
-
-                    call = self.get_or_call_sge_subscription(
-                        db_session=db,
+                    subscription = Subscription(
                         user=user,
                         usage_point=usage_point,
+                        series_name=measurement,
                         consent=consent,
-                        call_type=SubscriptionType.CONSUMPTION_CDC_ENABLE,
                     )
-                    subscription.webservices_calls.append(call)
+
                     db.commit()
 
-                    call = self.get_or_call_sge_subscription(
-                        db_session=db,
-                        user=user,
-                        usage_point=usage_point,
-                        consent=consent,
-                        call_type=SubscriptionType.CONSUMPTION_CDC_RAW,
+                    if measurement == "consumption/power/active/raw":
+
+                        call = self.get_or_call_sge_subscription(
+                            db_session=db,
+                            user=user,
+                            usage_point=usage_point,
+                            consent=consent,
+                            call_type=SubscriptionType.CONSUMPTION_CDC_ENABLE,
+                        )
+                        subscription.webservices_calls.append(call)
+                        db.commit()
+
+                        call = self.get_or_call_sge_subscription(
+                            db_session=db,
+                            user=user,
+                            usage_point=usage_point,
+                            consent=consent,
+                            call_type=SubscriptionType.CONSUMPTION_CDC_RAW,
+                        )
+                        subscription.webservices_calls.append(call)
+                        db.commit()
+
+                    elif measurement in [
+                        "consumption/energy/active/index",
+                        "consumption/power/apparent/max",
+                    ]:
+                        call = self.get_or_call_sge_subscription(
+                            db_session=db,
+                            user=user,
+                            usage_point=usage_point,
+                            consent=consent,
+                            call_type=SubscriptionType.CONSUMPTION_IDX,
+                        )
+                        subscription.webservices_calls.append(call)
+                        db.commit()
+
+                    else:
+                        raise RuntimeError(f"Unexpected measurement {measurement}")
+
+                except (PermissionError, IntegrityError) as e:
+                    raise XMPPError(condition="not-authorized", text=str(e))
+                except SgeError as e:
+                    # SGT570: Le service demandé est déjà actif sur la période demandée.
+                    # Service is already active
+                    # TODO fetch the id and add it to our known subscription calls
+                    if e.code == "SGT570":
+                        pass
+                    else:
+                        return fail_with_sge(e.message, e.code)
+                except ValueError as e:
+                    raise XMPPError(
+                        condition="bad-request",
+                        etype="modify",
+                        text=str(e),
                     )
-                    subscription.webservices_calls.append(call)
-                    db.commit()
-
-                elif measurement == "consumption/energy/active/index":
-
-                    call = self.get_or_call_sge_subscription(
-                        db_session=db,
-                        user=user,
-                        usage_point=usage_point,
-                        consent=consent,
-                        call_type=SubscriptionType.CONSUMPTION_IDX,
-                    )
-                    subscription.webservices_calls.append(call)
-                    db.commit()
-
-            except (PermissionError, IntegrityError) as e:
-                raise XMPPError(condition="not-authorized", text=str(e))
-            except SgeError as e:
-                # SGT570: Le service demandé est déjà actif sur la période demandée.
-                # Service is already active
-                # TODO fetch the id and add it to our known subscription calls
-                if e.code == "SGT570":
-                    pass
-                else:
-                    return fail_with_sge(e.message, e.code)
-            except ValueError as e:
-                raise XMPPError(
-                    condition="bad-request",
-                    etype="modify",
-                    text=str(e),
-                )
 
         form = self.xmpp_client["xep_0004"].make_form(ftype="result", title="Subscribe")
 
