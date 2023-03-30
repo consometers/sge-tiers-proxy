@@ -1,6 +1,6 @@
 import logging
 import statistics
-from typing import Dict, Iterable, Optional, List, Tuple, Union
+from typing import Dict, Iterable, Optional, List, Tuple, Union, TextIO
 import xml.etree.ElementTree as ET
 import datetime as dt
 import pytz
@@ -14,6 +14,7 @@ from sgeproxy.metadata_enedis import (
     MetadataEnedisConsumptionPowerCapacitiveRaw,
     MetadataEnedisConsumptionPowerInductiveRaw,
     MetadataEnedisConsumptionVoltageRaw,
+    LOAD_CURVE_SAMPLING_INTERVALS,
 )
 
 
@@ -416,4 +417,79 @@ class R4x:
 
                 record = Record(name, datetime, unit, value)
 
+                yield meta, record
+
+
+class Hdm:
+    @staticmethod
+    def open(filename: str) -> TextIO:
+        # Files starts with \ufeff
+        return open(filename, mode="r", encoding="utf-8-sig")
+
+    def __init__(self, csv_file: TextIO) -> None:
+        self.csv_file = csv_file
+
+    def records(self) -> Iterable[Tuple[Metadata, Record]]:
+        csv_meta_header = next(self.csv_file).strip().split(";")
+        csv_meta_values = next(self.csv_file).strip().split(";")
+        assert len(csv_meta_header) == len(csv_meta_values)
+        csv_meta = dict(zip(csv_meta_header, csv_meta_values))
+
+        assert csv_meta["Type de donnees"] == "Courbe de charge"
+        assert csv_meta["Grandeur physique"] == "Energie active"
+        name = "power/active"  # TODO repeated from R4x, refactor
+
+        assert csv_meta["Grandeur metier"] == "Consommation"
+        direction = "consumption"
+
+        assert csv_meta["Etape metier"] == "Comptage Brut"
+        nature = "raw"
+
+        # Unit does not seems to be specified sometimes, assume W
+        if csv_meta["Unite"] == "W" or csv_meta["Unite"] == "":
+            unit = "W"
+        else:
+            raise ValueError(f"Unexpected stream unit {csv_meta['Unite']}")
+
+        # Sampling interval does not seem to be specified
+        assert csv_meta["Pas en minutes"] == ""
+
+        usage_point = csv_meta["Identifiant PRM"]
+
+        name = f"urn:dev:prm:{usage_point}_{direction}/{name}/{nature}"
+
+        meta: Optional[Metadata] = None
+
+        csv_values_header = next(self.csv_file).strip().split(";")
+        assert csv_values_header == ["Horodate", "Valeur"]
+
+        first_two_records = []
+
+        for row in self.csv_file:
+            values = row.strip().split(";")
+            assert len(values) == 2
+            datetime = dt.datetime.fromisoformat(values[0])
+            if values[1] == "":
+                # No value for this point
+                continue
+            value = int(values[1])
+            record = Record(name, datetime, unit, value)
+
+            if meta is None:
+                first_two_records.append(record)
+                if len(first_two_records) < 2:
+                    # yield them when sampling interval have been determined
+                    continue
+                else:
+                    diff = first_two_records[1].time - first_two_records[0].time
+                    minutes = round(diff.total_seconds() / 60)
+                    sampling = LOAD_CURVE_SAMPLING_INTERVALS.get(minutes)
+                    if sampling is None:
+                        raise ValueError("Unable to guess sampling interval")
+                    meta = MetadataEnedisConsumptionPowerActiveRaw(
+                        usage_point, sampling
+                    )
+                    for record in first_two_records:
+                        yield meta, record
+            else:
                 yield meta, record

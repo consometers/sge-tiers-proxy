@@ -1,7 +1,9 @@
 import unittest
 import os
 
-from sgeproxy.publisher import RecordsByName, StreamsFiles
+from sgeproxy.publisher import RecordsByName, StreamsFiles, StreamFiles
+from sgeproxy.streams import Hdm
+from sgeproxy.metadata import MeasurementUnit
 from quoalise.data import Data, Metadata
 from slixmpp.xmlstream import ET
 
@@ -98,6 +100,78 @@ class TestStreams(unittest.TestCase):
         records_by_meta = list(records_by_name.get(NAME))
         self.assertTrue(len(records_by_meta) == 1)
         self.assertTrue(len(records_by_meta[0][1]) > 0)
+
+
+class TestHdm(unittest.TestCase):
+    def assert_load_curve(self, meta, record):
+        self.assertEqual(meta.measurement.unit, MeasurementUnit.W)
+        self.assertRegex(meta.device.identifier.value, r"^\d{14}$")
+
+        self.assertEqual(record.unit, meta.measurement.unit.value)
+        self.assertEqual(
+            record.name,
+            f"urn:dev:prm:{meta.device.identifier.value}_consumption/power/active/raw",
+        )
+
+    def test_c5_cdc(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_CDC.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                records = []
+                for meta, record in hdm.records():
+                    self.assert_load_curve(meta, record)
+                    records.append(record)
+                self.assertEqual(6050, len(records))
+                self.assertEqual(
+                    records[0].time.isoformat(), "2021-09-01T00:30:00+02:00"
+                )
+                self.assertEqual(records[0].value, 394)
+                self.assertEqual(
+                    records[-1].time.isoformat(), "2022-01-05T00:00:00+01:00"
+                )
+                self.assertEqual(records[-1].value, 436)
+
+    def test_c5_cdc_missing_values(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_CDC_missing_values.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                records = []
+                for meta, record in hdm.records():
+                    self.assert_load_curve(meta, record)
+                    records.append(record)
+                # First record is first non missing value
+                self.assertEqual(
+                    records[0].time.isoformat(), "2021-01-07T14:00:00+01:00"
+                )
+                self.assertEqual(records[0].value, 1061)
+
+    def test_c4_cdc(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C4_CDC.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                for meta, record in hdm.records():
+                    self.assert_load_curve(meta, record)
 
 
 if __name__ == "__main__":

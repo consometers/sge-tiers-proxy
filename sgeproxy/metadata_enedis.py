@@ -17,6 +17,14 @@ class DeviceIdentifierEnedis(DeviceIdentifier):
         super().__init__(authority="enedis", type="prm", value=prm)
 
 
+LOAD_CURVE_SAMPLING_INTERVALS = {
+    5: SamplingInterval("PT5M"),
+    10: SamplingInterval("PT10M"),
+    30: SamplingInterval("PT30M"),
+    60: SamplingInterval("PT60M"),
+}
+
+
 class MetadataEnedisConsumptionPowerActiveRaw(Metadata):
     def __init__(self, prm: str, sampling_interval: SamplingInterval):
         super().__init__(
