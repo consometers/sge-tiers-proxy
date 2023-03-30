@@ -428,33 +428,35 @@ class Hdm:
 
     def __init__(self, csv_file: TextIO) -> None:
         self.csv_file = csv_file
-
-    def records(self) -> Iterable[Tuple[Metadata, Record]]:
         csv_meta_header = next(self.csv_file).strip().split(";")
         csv_meta_values = next(self.csv_file).strip().split(";")
         assert len(csv_meta_header) == len(csv_meta_values)
-        csv_meta = dict(zip(csv_meta_header, csv_meta_values))
+        self.csv_meta = dict(zip(csv_meta_header, csv_meta_values))
 
-        assert csv_meta["Type de donnees"] == "Courbe de charge"
-        assert csv_meta["Grandeur physique"] == "Energie active"
+    def usage_point(self):
+        return self.csv_meta["Identifiant PRM"]
+
+    def records(self, is_c5) -> Iterable[Tuple[Metadata, Record]]:
+
+        assert self.csv_meta["Type de donnees"] == "Courbe de charge"
+        assert self.csv_meta["Grandeur physique"] == "Energie active"
         name = "power/active"  # TODO repeated from R4x, refactor
 
-        assert csv_meta["Grandeur metier"] == "Consommation"
+        assert self.csv_meta["Grandeur metier"] == "Consommation"
         direction = "consumption"
 
-        assert csv_meta["Etape metier"] == "Comptage Brut"
+        assert self.csv_meta["Etape metier"] == "Comptage Brut"
         nature = "raw"
 
         # Unit does not seems to be specified sometimes, assume W
-        if csv_meta["Unite"] == "W" or csv_meta["Unite"] == "":
+        if self.csv_meta["Unite"] == "W" or self.csv_meta["Unite"] == "":
             unit = "W"
         else:
-            raise ValueError(f"Unexpected stream unit {csv_meta['Unite']}")
+            raise ValueError(f"Unexpected stream unit {self.csv_meta['Unite']}")
 
-        # Sampling interval does not seem to be specified
-        assert csv_meta["Pas en minutes"] == ""
+        # Sampling interval it not specified because it can change within a file
 
-        usage_point = csv_meta["Identifiant PRM"]
+        usage_point = self.csv_meta["Identifiant PRM"]
 
         name = f"urn:dev:prm:{usage_point}_{direction}/{name}/{nature}"
 
@@ -463,33 +465,54 @@ class Hdm:
         csv_values_header = next(self.csv_file).strip().split(";")
         assert csv_values_header == ["Horodate", "Valeur"]
 
-        first_two_records = []
+        prev_time = None
+        first_row = None
+        rows: List[Tuple[dt.datetime, dt.timedelta, Optional[int]]] = []
 
         for row in self.csv_file:
             values = row.strip().split(";")
             assert len(values) == 2
             datetime = dt.datetime.fromisoformat(values[0])
-            if values[1] == "":
-                # No value for this point
-                continue
-            value = int(values[1])
-            record = Record(name, datetime, unit, value)
-
-            if meta is None:
-                first_two_records.append(record)
-                if len(first_two_records) < 2:
-                    # yield them when sampling interval have been determined
-                    continue
-                else:
-                    diff = first_two_records[1].time - first_two_records[0].time
-                    minutes = round(diff.total_seconds() / 60)
-                    sampling = LOAD_CURVE_SAMPLING_INTERVALS.get(minutes)
-                    if sampling is None:
-                        raise ValueError("Unable to guess sampling interval")
-                    meta = MetadataEnedisConsumptionPowerActiveRaw(
-                        usage_point, sampling
-                    )
-                    for record in first_two_records:
-                        yield meta, record
+            if values[1] != "":
+                value = int(values[1])
             else:
-                yield meta, record
+                value = None
+
+            if first_row is None:
+                first_row = (datetime, None, value)
+                prev_time = datetime
+                continue
+            else:
+                diff = datetime - prev_time
+                prev_time = datetime
+
+            rows.append((datetime, diff, value))
+
+        # Assume sampling first sampling rate is the same than the following
+        if len(rows) < 1 or first_row is None:
+            logging.warn("Not enough rows to infer sampling, skip")
+            return
+        rows.insert(0, (first_row[0], rows[0][1], first_row[2]))
+
+        # C5 segment values are stamped at the end of the period,
+        # C4 at the beginning,
+        # quoalise at the beginning.
+
+        if is_c5:
+            rows = [(t - d, d, v) for t, d, v in rows]
+
+        for datetime, diff, value in rows:
+
+            if value is None:
+                continue
+
+            diff_minutes = round(diff.total_seconds() / 60)
+            sampling_interval = LOAD_CURVE_SAMPLING_INTERVALS.get(diff_minutes)
+            if sampling_interval is None:
+                logging.warning("Unexpected sampling interval, skip value")
+                continue
+            meta = MetadataEnedisConsumptionPowerActiveRaw(
+                usage_point, sampling_interval
+            )
+            record = Record(name, datetime, unit, value)
+            yield meta, record

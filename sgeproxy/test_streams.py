@@ -125,16 +125,19 @@ class TestHdm(unittest.TestCase):
             with Hdm.open(data_file) as f:
                 hdm = Hdm(f)
                 records = []
-                for meta, record in hdm.records():
+                for meta, record in hdm.records(is_c5=True):
                     self.assert_load_curve(meta, record)
+                    self.assertEqual(meta.measurement.sampling_interval.value, "PT30M")
                     records.append(record)
                 self.assertEqual(6050, len(records))
+                # First record is from 00:00 to 00:30
                 self.assertEqual(
-                    records[0].time.isoformat(), "2021-09-01T00:30:00+02:00"
+                    records[0].time.isoformat(), "2021-09-01T00:00:00+02:00"
                 )
                 self.assertEqual(records[0].value, 394)
+                # First record is from 23:30 to 00:00
                 self.assertEqual(
-                    records[-1].time.isoformat(), "2022-01-05T00:00:00+01:00"
+                    records[-1].time.isoformat(), "2022-01-04T23:30:00+01:00"
                 )
                 self.assertEqual(records[-1].value, 436)
 
@@ -144,20 +147,41 @@ class TestHdm(unittest.TestCase):
             aes_iv=Args.aes_iv,
             aes_key=Args.aes_key,
         )
+        # Some values are missing with the date specified
+        #   2021-01-07T22:00:00+01:00;2491
+        #   2021-01-07T23:00:00+01:00;
+        #   2021-01-08T00:00:00+01:00;749
+        #   No sampling interval guess issue here
+        # Some values are missing without the date being specified (no 23:00)
+        #   2021-02-06T22:00:00+01:00;2168
+        #   2021-02-07T00:00:00+01:00;358
+        #   For now in this case 2021-02-07T00:00 is discarded because sampling
+        #   interval is hard to guess.
         with stream_files as data_files:
             self.assertEqual(len(data_files), 1)
             data_file = data_files[0]
+            expected_sampling_interval = "PT60M"
             with Hdm.open(data_file) as f:
                 hdm = Hdm(f)
                 records = []
-                for meta, record in hdm.records():
+                for meta, record in hdm.records(is_c5=True):
                     self.assert_load_curve(meta, record)
+                    # Sampling interval changed in this file
+                    if (
+                        expected_sampling_interval == "PT60M"
+                        and meta.measurement.sampling_interval.value == "PT30M"
+                    ):
+                        expected_sampling_interval = "PT30M"
+                    else:
+                        self.assertEqual(
+                            expected_sampling_interval,
+                            meta.measurement.sampling_interval.value,
+                        )
                     records.append(record)
                 # First record is first non missing value
                 self.assertEqual(
-                    records[0].time.isoformat(), "2021-01-07T14:00:00+01:00"
+                    records[0].time.isoformat(), "2021-01-07T13:00:00+01:00"
                 )
-                self.assertEqual(records[0].value, 1061)
 
     def test_c4_cdc(self):
         stream_files = StreamFiles(
@@ -168,10 +192,17 @@ class TestHdm(unittest.TestCase):
         with stream_files as data_files:
             self.assertEqual(len(data_files), 1)
             data_file = data_files[0]
+            records = []
             with Hdm.open(data_file) as f:
                 hdm = Hdm(f)
-                for meta, record in hdm.records():
+                for meta, record in hdm.records(is_c5=False):
                     self.assert_load_curve(meta, record)
+                    self.assertEqual(meta.measurement.sampling_interval.value, "PT10M")
+                    records.append(record)
+                # First record at 00:00
+                self.assertEqual(
+                    records[0].time.isoformat(), "2020-02-03T00:00:00+01:00"
+                )
 
 
 if __name__ == "__main__":
