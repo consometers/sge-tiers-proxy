@@ -214,34 +214,40 @@ def chunks(lst: List[Record], n) -> Iterable[List[Record]]:
 
 class RecordsByName:
     def __init__(self):
-        self.records: Dict[str, Tuple[SgeProxyMeta, List[Record]]] = {}
+        self.records: Dict[str, Dict[SgeProxyMeta, List[Record]]] = {}
 
     def add(self, metadata: SgeProxyMeta, record: Record) -> None:
         if record.name not in self.records:
-            self.records[record.name] = (metadata, [record])
-        else:
-            # All records sharing the same name should share the same metadata
-            assert metadata == self.records[record.name][0]
-            self.records[record.name][1].append(record)
+            self.records[record.name] = {}
+        if metadata not in self.records[record.name]:
+            self.records[record.name][metadata] = []
+        self.records[record.name][metadata].append(record)
 
     def get(
         self, prefix: str = "", chunk_size: int = 0
     ) -> Iterable[Tuple[SgeProxyMeta, List[Record]]]:
         # Group records by metadata to be sent together
-        records_by_meta: Dict[SgeProxyMeta, List[Record]] = {}
-        for name, meta_with_records in self.records.items():
-            meta, records = meta_with_records
-            if name.startswith(prefix):
-                if meta not in records_by_meta:
-                    records_by_meta[meta] = records.copy()
-                else:
-                    records_by_meta[meta].extend(records)
-        for meta, records in records_by_meta.items():
+        all_records_by_meta: Dict[SgeProxyMeta, List[Record]] = {}
+        for name, records_by_meta in self.records.items():
+            for meta, records in records_by_meta.items():
+                if name.startswith(prefix):
+                    if meta not in records_by_meta:
+                        all_records_by_meta[meta] = records.copy()
+                    else:
+                        all_records_by_meta[meta].extend(records)
+        for meta, records in all_records_by_meta.items():
             if chunk_size:
                 for records_chunk in chunks(records, chunk_size):
                     yield meta, records_chunk
             else:
                 yield meta, records
+
+    def count(self):
+        value = 0
+        for records_by_meta in self.records.values():
+            for records in records_by_meta.values():
+                value += len(records)
+        return value
 
 
 if __name__ == "__main__":
