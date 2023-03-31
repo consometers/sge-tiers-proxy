@@ -10,6 +10,7 @@ from sgeproxy.metadata import Metadata, SamplingInterval
 from sgeproxy.metadata_enedis import (
     MetadataEnedisConsumptionPowerActiveRaw,
     MetadataEnedisConsumptionPowerApparentMax,
+    MetadataEnedisConsumptionPowerTrueMax,
     MetadataEnedisConsumptionEnergyActiveIndex,
     MetadataEnedisConsumptionPowerCapacitiveRaw,
     MetadataEnedisConsumptionPowerInductiveRaw,
@@ -71,13 +72,23 @@ class R171:
             base_name = f"urn:dev:prm:{usage_point}_{direction}"
             ea_meta = MetadataEnedisConsumptionEnergyActiveIndex(usage_point)
             pmax_meta = MetadataEnedisConsumptionPowerApparentMax(usage_point)
+            pmax_true_meta = MetadataEnedisConsumptionPowerTrueMax(usage_point)
 
             if measurement_code == "PMA":
-                name = (
-                    base_name
-                    + f"/power/apparent/max/{temporal_class_owner}/{temporal_class}"
-                )
-                meta: Metadata = pmax_meta
+                if unit == "VA":
+                    name = (
+                        base_name
+                        + f"/power/apparent/max/{temporal_class_owner}/{temporal_class}"
+                    )
+                    meta: Metadata = pmax_meta
+                elif unit == "W":
+                    name = (
+                        base_name
+                        + f"/power/true/max/{temporal_class_owner}/{temporal_class}"
+                    )
+                    meta: Metadata = pmax_true_meta
+                else:
+                    raise ValueError("Unexpected PMA unit")
             elif measurement_code == "EA":
                 name = (
                     base_name
@@ -96,7 +107,8 @@ class R171:
                 # DQ Dépassement Quadratique
                 continue
 
-            assert unit == meta.measurement.unit.value
+            assert unit == meta.measurement.unit.value, \
+                f"unit {unit} != {meta.measurement.unit.value} expected"
 
             for measurement in series.findall(".//mesureDatee"):
                 # TODO(cyril) PMAX is relevant over a period of time, should be
@@ -129,6 +141,15 @@ class R171:
                                 None,
                             ),
                         ),
+                        "power/true/max": (
+                            pmax_true_meta,
+                            Record(
+                                f"{base_name}/power/true/max",
+                                time,
+                                None,
+                                None,
+                            ),
+                        ),
                         "energy/active/index": (
                             ea_meta,
                             Record(
@@ -151,9 +172,19 @@ class R171:
                     # Only compute records for consumption for now
                     continue
 
-                if measurement_code == "PMA":
+                if meta == pmax_meta:
                     meta, record = computed_records[usage_point][time][
                         "power/apparent/max"
+                    ]
+                    if record.unit is None:
+                        record.unit = unit
+                    assert record.unit == meta.measurement.unit.value
+                    if record.value is None or record.value < value:
+                        record.value = value
+
+                elif meta == pmax_true_meta:
+                    meta, record = computed_records[usage_point][time][
+                        "power/true/max"
                     ]
                     if record.unit is None:
                         record.unit = unit
