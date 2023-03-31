@@ -355,7 +355,11 @@ class R50:
 
 class R4x:
 
-    SAMPLING_INTERVAL = SamplingInterval("PT10M")
+    
+    SAMPLING_INTERVALS = {
+        5: SamplingInterval("PT5M"),
+        10: SamplingInterval("PT10M"),
+    }
 
     def __init__(self, xml_doc: str) -> None:
         self.doc = ET.parse(xml_doc)
@@ -377,9 +381,16 @@ class R4x:
             unit = _find_text(curve, "Unite_Mesure")
 
             period = int(_find_text(curve, "Granularite"))
-            assert period == 10  # From spec
 
-            direction = _find_text(curve, "Grandeur_Metier")
+            assert period in self.SAMPLING_INTERVALS.keys()
+            sampling_interval = self.SAMPLING_INTERVALS[period]
+
+            try:
+                direction = _find_text(curve, "Grandeur_Metier")
+            except AssertionError:
+                # TODO I guess it is a bug, remove when no longer needed
+                logging.warn("Grandeur_Metier missing, supposing CONS")
+                direction = "CONS"
             if direction == "CONS":
                 direction = "consumption"
             elif direction == "PROD":
@@ -391,7 +402,7 @@ class R4x:
                 assert unit == "kW"
                 unit = "W"  # Value will be converted
                 meta: Metadata = MetadataEnedisConsumptionPowerActiveRaw(
-                    usage_point, self.SAMPLING_INTERVAL
+                    usage_point, sampling_interval
                 )
             elif measurement == "ERC":
                 name = "power/capacitive"
@@ -399,7 +410,7 @@ class R4x:
                 # assert unit == "kWr"
                 unit = "Wr"  # Value will be converted
                 meta = MetadataEnedisConsumptionPowerCapacitiveRaw(
-                    usage_point, self.SAMPLING_INTERVAL
+                    usage_point, sampling_interval
                 )
             elif measurement == "ERI":
                 # TODO seems to be kVAr
@@ -407,12 +418,12 @@ class R4x:
                 unit = "Wr"  # Value will be converted
                 name = "power/inductive"
                 meta = MetadataEnedisConsumptionPowerInductiveRaw(
-                    usage_point, self.SAMPLING_INTERVAL
+                    usage_point, sampling_interval
                 )
             elif measurement == "E":
                 name = "voltage"
                 meta = MetadataEnedisConsumptionVoltageRaw(
-                    usage_point, self.SAMPLING_INTERVAL
+                    usage_point, sampling_interval
                 )
             else:
                 raise RuntimeError(f"Unexpected Grandeur {name}")
