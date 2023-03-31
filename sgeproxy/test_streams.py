@@ -2,7 +2,7 @@ import unittest
 import os
 
 from sgeproxy.publisher import RecordsByName, StreamsFiles, StreamFiles
-from sgeproxy.streams import Hdm
+from sgeproxy.streams import R171, Hdm
 from quoalise.data import Data, Metadata, Record
 from slixmpp.xmlstream import ET
 
@@ -124,6 +124,36 @@ class TestDayStreams(TestStreams):
         records_by_meta = list(records_by_name.get(NAME))
         self.assertTrue(len(records_by_meta) == 1)
         self.assertTrue(len(records_by_meta[0][1]) > 0)
+
+
+class TestR171(TestStreams):
+
+    # Some streams uses active W for pmax power, most of the others apparent VA
+    def test_pmax_true_power(self):
+        stream_files = StreamFiles(
+            os.path.join(
+                TEST_DATA_DIR, "R171", "pmax_active_power_and_missing_values.zip"
+            ),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            r171 = R171(data_file)
+            prms_pmax_active = set()
+            prms_pmax_apparent = set()
+            for meta, record in r171.records():
+                self.assert_valid_meta_and_record(meta, record)
+                if "power/active/max" in record.name:
+                    prms_pmax_active.add(meta.device.identifier.value)
+                elif "power/apparent/max" in record.name:
+                    prms_pmax_apparent.add(meta.device.identifier.value)
+            self.assertTrue(len(prms_pmax_active) > 0)
+            self.assertTrue(len(prms_pmax_apparent) > 0)
+            # It seems to be either one or the other, not both
+            self.assertTrue(len(prms_pmax_active.intersection(prms_pmax_apparent)) == 0)
 
 
 class TestHdm(TestStreams):
