@@ -19,7 +19,7 @@ from sqlalchemy.orm import sessionmaker
 import sgeproxy.sge
 import sgeproxy.xmpp_interface
 import sgeproxy.streams
-from sgeproxy.db import Subscription
+from sgeproxy.db import Subscription, UsagePoint, UsagePointSegment
 from quoalise.data import Data, Record, Metadata
 
 # SgeProxyMeta will be merged with quoalise.data.Metadata at some point
@@ -123,7 +123,7 @@ class StreamsFiles:
             pattern = os.path.join(self.inbox_dir, "**", "*")
         return glob.iglob(pattern, recursive=True)
 
-    def file_records(self, path):
+    def file_records(self, path, is_prm_c5=lambda prm: True):
 
         filename = os.path.basename(path)
 
@@ -156,7 +156,10 @@ class StreamsFiles:
                 if stream_handler == sgeproxy.streams.Hdm:
                     with sgeproxy.streams.Hdm.open(data_file) as io:
                         stream = stream_handler(io)
-                        for metadata, record in stream.records():
+                        # FIXME(cyril) depending on db is ugly here
+                        for metadata, record in stream.records(
+                            is_c5=is_prm_c5(stream.usage_point())
+                        ):
                             yield metadata, record
                 else:
                     stream = stream_handler(data_file)
@@ -341,11 +344,14 @@ if __name__ == "__main__":
     files = list(streams_files.glob())
     records_by_name = RecordsByName()
 
+    def is_prm_c5(prm):
+        return db_session.query(UsagePoint).get(prm).segment == UsagePointSegment.C5
+
     while files:
         f = files.pop(0)
         logging.info(f"Parsing {f}")
         try:
-            for metadata, record in streams_files.file_records(f):
+            for metadata, record in streams_files.file_records(f, is_prm_c5):
                 records_by_name.add(metadata, record)
         except Exception:
             logging.exception(f"Unable to parse data from {f}")
