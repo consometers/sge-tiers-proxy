@@ -330,9 +330,11 @@ if __name__ == "__main__":
         publish_archives=args.publish_archives,
     )
 
+    files = list(streams_files.glob())
     records_by_name = RecordsByName()
 
-    for f in streams_files.glob():
+    while files:
+        f = files.pop(0)
         logging.info(f"Parsing {f}")
         try:
             for metadata, record in streams_files.file_records(f):
@@ -341,26 +343,33 @@ if __name__ == "__main__":
             logging.exception(f"Unable to parse data from {f}")
             streams_files.move_to_errors(f)
 
-    xmpp.connect()
+        # Send records little by little
+        if records_by_name.count() > 1000:
 
-    loop = asyncio.get_event_loop()
+            xmpp.connect()
 
-    loop.run_until_complete(asyncio.wait_for(xmpp.session_started, 10))
+            loop = asyncio.get_event_loop()
 
-    for sub in db_session.query(Subscription).all():
-        # TODO move check to query
-        if args.user and args.user != sub.user_id:
-            continue
-        if sub.user_id == "cyril@lugan.fr":
-            # currently having a consent issue
-            continue
+            loop.run_until_complete(asyncio.wait_for(xmpp.session_started, 10))
 
-        series_name = f"urn:dev:prm:{sub.usage_point_id}_{sub.series_name}"
+            for sub in db_session.query(Subscription).all():
+                # TODO move check to query
+                if args.user and args.user != sub.user_id:
+                    continue
+                if sub.user_id == "cyril@lugan.fr":
+                    # currently having a consent issue
+                    continue
 
-        for metadata, records in records_by_name.get(
-            prefix=series_name, chunk_size=1000
-        ):
-            with sub.notification_checks():
-                loop.run_until_complete(xmpp.send_data(sub.user_id, metadata, records))
+                series_name = f"urn:dev:prm:{sub.usage_point_id}_{sub.series_name}"
 
-    xmpp.disconnect()
+                for metadata, records in records_by_name.get(
+                    prefix=series_name, chunk_size=1000
+                ):
+                    with sub.notification_checks():
+                        loop.run_until_complete(
+                            xmpp.send_data(sub.user_id, metadata, records)
+                        )
+
+            xmpp.disconnect()
+
+        records_by_name = RecordsByName()
