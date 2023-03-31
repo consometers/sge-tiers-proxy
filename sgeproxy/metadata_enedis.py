@@ -118,6 +118,27 @@ class MetadataEnedisConsumptionPowerApparentMax(Metadata):
         )
 
 
+class MetadataEnedisConsumptionPowerActiveMax(Metadata):
+
+    MEASUREMENT = Measurement(
+        name="active-power",
+        quantity=MeasurementQuantity.POWER,
+        type=MeasurementType.ELECTRICAL,
+        direction=MeasurementDirection.CONSUMPTION,
+        unit=MeasurementUnit.W,
+        sampling_interval=SamplingInterval("P1D"),
+    )
+
+    def __init__(self, prm: str):
+        super().__init__(
+            device=Device(
+                type=DeviceType.ELECTRICITY_METER,
+                identifier=DeviceIdentifierEnedis(prm),
+            ),
+            measurement=self.MEASUREMENT,
+        )
+
+
 class MetadataEnedisConsumptionEnergyActiveIndex(Metadata):
 
     MEASUREMENT = Measurement(
