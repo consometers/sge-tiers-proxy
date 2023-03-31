@@ -2,7 +2,8 @@ import unittest
 import os
 
 from sgeproxy.publisher import RecordsByName, StreamsFiles, StreamFiles
-from sgeproxy.streams import R171, Hdm
+from sgeproxy.streams import R171, R4x, Hdm
+from sgeproxy.metadata import MeasurementDirection
 from quoalise.data import Data, Metadata, Record
 from slixmpp.xmlstream import ET
 
@@ -41,8 +42,14 @@ class TestStreams(unittest.TestCase):
             self.assertEqual(record.unit, "W")
         elif series.startswith("consumption/power/apparent/max"):
             self.assertEqual(record.unit, "VA")
+        elif series.startswith("consumption/voltage/raw"):
+            self.assertEqual(record.unit, "V")
         else:
             raise AssertionError(f"Unexpected series name {series}")
+
+    def assert_load_curve(self, meta, record):
+        self.assert_valid_meta_and_record(meta, record)
+        self.assertTrue(record.name.endswith("consumption/power/active/raw"))
 
 
 def day_records():
@@ -126,6 +133,43 @@ class TestDayStreams(TestStreams):
         self.assertTrue(len(records_by_meta[0][1]) > 0)
 
 
+class TestR4x(TestStreams):
+
+    # Around 2023-03-20, sampling rate was changed to 5 min on some points
+    def test_5min(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "R4x", "5min.zip"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            r4x = R4x(data_file)
+            records_5min = 0
+            for meta, record in r4x.records():
+                self.assert_valid_meta_and_record(meta, record)
+                if meta.measurement.sampling_interval.value == "PT5M":
+                    records_5min += 1
+            self.assertTrue(records_5min > 0)
+
+    # Sometimes the GrandeurMetier tag is not present, assuming CONS
+    def test_empty_direction(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "R4x", "empty_Grandeur_Metier.zip"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            for data_file in data_files:
+                r4x = R4x(data_file)
+                for meta, record in r4x.records():
+                    self.assert_valid_meta_and_record(meta, record)
+                    self.assertEqual(
+                        meta.measurement.direction, MeasurementDirection.CONSUMPTION
+                    )
+
+
 class TestR171(TestStreams):
 
     # Some streams uses active W for pmax power, most of the others apparent VA
@@ -157,10 +201,6 @@ class TestR171(TestStreams):
 
 
 class TestHdm(TestStreams):
-    def assert_load_curve(self, meta, record):
-        self.assert_valid_meta_and_record(meta, record)
-        self.assertTrue(record.name.endswith("consumption/power/active/raw"))
-
     def test_c5_cdc(self):
         stream_files = StreamFiles(
             os.path.join(TEST_DATA_DIR, "HDM", "C5_CDC.csv"),

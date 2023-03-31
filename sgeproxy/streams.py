@@ -331,7 +331,7 @@ class R50:
                 caution = int(_find_text(pdc, "IV"))
 
                 if caution:
-                    logging.warn(f"caution {caution} is not handled yet")
+                    logging.warning(f"caution {caution} is not handled yet")
 
                 datetime = dt.datetime.fromisoformat(datetime_str)
 
@@ -356,9 +356,6 @@ class R50:
 
 
 class R4x:
-
-    SAMPLING_INTERVAL = SamplingInterval("PT10M")
-
     def __init__(self, xml_doc: str) -> None:
         self.doc = ET.parse(xml_doc)
 
@@ -379,9 +376,16 @@ class R4x:
             unit = _find_text(curve, "Unite_Mesure")
 
             period = int(_find_text(curve, "Granularite"))
-            assert period == 10  # From spec
 
-            direction = _find_text(curve, "Grandeur_Metier")
+            assert period in LOAD_CURVE_SAMPLING_INTERVALS.keys()
+            sampling_interval = LOAD_CURVE_SAMPLING_INTERVALS[period]
+
+            try:
+                direction = _find_text(curve, "Grandeur_Metier")
+            except AssertionError:
+                # TODO I guess it is a bug, remove when no longer needed
+                logging.warning("Grandeur_Metier missing, supposing CONS")
+                direction = "CONS"
             if direction == "CONS":
                 direction = "consumption"
             elif direction == "PROD":
@@ -393,7 +397,7 @@ class R4x:
                 assert unit == "kW"
                 unit = "W"  # Value will be converted
                 meta: Metadata = MetadataEnedisConsumptionPowerActiveRaw(
-                    usage_point, self.SAMPLING_INTERVAL
+                    usage_point, sampling_interval
                 )
             elif measurement == "ERC":
                 name = "power/capacitive"
@@ -401,7 +405,7 @@ class R4x:
                 # assert unit == "kWr"
                 unit = "Wr"  # Value will be converted
                 meta = MetadataEnedisConsumptionPowerCapacitiveRaw(
-                    usage_point, self.SAMPLING_INTERVAL
+                    usage_point, sampling_interval
                 )
             elif measurement == "ERI":
                 # TODO seems to be kVAr
@@ -409,12 +413,12 @@ class R4x:
                 unit = "Wr"  # Value will be converted
                 name = "power/inductive"
                 meta = MetadataEnedisConsumptionPowerInductiveRaw(
-                    usage_point, self.SAMPLING_INTERVAL
+                    usage_point, sampling_interval
                 )
             elif measurement == "E":
                 name = "voltage"
                 meta = MetadataEnedisConsumptionVoltageRaw(
-                    usage_point, self.SAMPLING_INTERVAL
+                    usage_point, sampling_interval
                 )
             else:
                 raise RuntimeError(f"Unexpected Grandeur {name}")
@@ -440,7 +444,7 @@ class R4x:
                     # K : Calculé, point de courbe issu d’un calcul basé sur
                     #     d’autres courbes de charges
                     # D : importé manuellement par le métier Enedis
-                    logging.warn(f"status {status} is not handled yet")
+                    logging.warning(f"status {status} is not handled yet")
                     continue
 
                 if measurement in ["EA", "ERC", "ERI"]:
@@ -522,7 +526,7 @@ class Hdm:
 
         # Assume sampling first sampling rate is the same than the following
         if len(rows) < 1 or first_row is None:
-            logging.warn("Not enough rows to infer sampling, skip")
+            logging.warning("Not enough rows to infer sampling, skip")
             return
         rows.insert(0, (first_row[0], rows[0][1], first_row[2]))
 
