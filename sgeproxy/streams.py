@@ -208,8 +208,8 @@ class R171:
         for usage_point in computed_records:
             for time, records in computed_records[usage_point].items():
                 for meta, record in records.values():
-                    assert record.value is not None, "Unable to compute record"
-                    yield meta, record
+                    if record.value is not None:
+                        yield meta, record
 
 
 class R151:
