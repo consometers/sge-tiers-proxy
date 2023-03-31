@@ -428,6 +428,9 @@ class R4x:
             for point in curve.findall("./Donnees_Point_Mesure"):
 
                 datetime = dt.datetime.fromisoformat(point.attrib["Horodatage"])
+                if "Valeur_Point" not in point.attrib:
+                    logging.warning(f"missing values for {usage_point}")
+                    continue
                 value = int(point.attrib["Valeur_Point"])
                 status = point.attrib["Statut_Point"]
 

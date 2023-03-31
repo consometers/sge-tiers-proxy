@@ -169,6 +169,18 @@ class TestR4x(TestStreams):
                         meta.measurement.direction, MeasurementDirection.CONSUMPTION
                     )
 
+    def test_missing_values(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "R4x", "missing_values.zip"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            for data_file in data_files:
+                r4x = R4x(data_file)
+                for meta, record in r4x.records():
+                    self.assert_valid_meta_and_record(meta, record)
+
 
 class TestR171(TestStreams):
 
