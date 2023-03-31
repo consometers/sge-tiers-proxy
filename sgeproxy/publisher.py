@@ -231,7 +231,7 @@ class RecordsByName:
         for name, records_by_meta in self.records.items():
             for meta, records in records_by_meta.items():
                 if name.startswith(prefix):
-                    if meta not in records_by_meta:
+                    if meta not in all_records_by_meta:
                         all_records_by_meta[meta] = records.copy()
                     else:
                         all_records_by_meta[meta].extend(records)
@@ -344,7 +344,7 @@ if __name__ == "__main__":
             streams_files.move_to_errors(f)
 
         # Send records little by little
-        if records_by_name.count() > 1000:
+        if records_by_name.count() > 1000 or len(files) == 0:
 
             xmpp.connect()
 
