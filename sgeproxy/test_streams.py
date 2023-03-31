@@ -3,8 +3,7 @@ import os
 
 from sgeproxy.publisher import RecordsByName, StreamsFiles, StreamFiles
 from sgeproxy.streams import Hdm
-from sgeproxy.metadata import MeasurementUnit
-from quoalise.data import Data, Metadata
+from quoalise.data import Data, Metadata, Record
 from slixmpp.xmlstream import ET
 
 TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test_data", "streams")
@@ -13,6 +12,37 @@ TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test_data", "streams")
 class Args:
     aes_iv = None
     aes_key = None
+
+
+class TestStreams(unittest.TestCase):
+    def assert_meta_matches_record(self, meta: Metadata, record: Record):
+        # Id matches
+        self.assertRegex(meta.device.identifier.value, r"^\d{14}$")
+        self.assertTrue(
+            record.name.startswith(f"urn:dev:prm:{meta.device.identifier.value}")
+        )
+        # Unit matches
+        self.assertEqual(record.unit, meta.measurement.unit.value)
+
+    def assert_valid_meta_and_record(self, meta: Metadata, record: Record):
+
+        self.assert_meta_matches_record(meta, record)
+
+        identifier, series = record.name.split("_")
+
+        # TODO check calendar value like max/distributor/hph
+        if series.startswith("consumption/energy/active/index"):
+            self.assertEqual(record.unit, "Wh")
+        elif series.startswith("consumption/power/active/raw"):
+            self.assertEqual(record.unit, "W")
+        elif series.startswith("consumption/power/inductive/raw"):
+            self.assertEqual(record.unit, "Wr")
+        elif series.startswith("consumption/power/active/max"):
+            self.assertEqual(record.unit, "W")
+        elif series.startswith("consumption/power/apparent/max"):
+            self.assertEqual(record.unit, "VA")
+        else:
+            raise AssertionError(f"Unexpected series name {series}")
 
 
 def day_records():
@@ -31,19 +61,13 @@ def day_records():
     return records_by_name
 
 
-class TestStreams(unittest.TestCase):
+class TestDayStreams(TestStreams):
     def test_day_all(self):
 
         records_by_name = day_records()
         for metadata, records in records_by_name.get():
-            print(metadata.to_dict())
             for record in records:
-                self.assertEqual(record.unit, metadata.measurement.unit.value)
-                self.assertTrue(
-                    record.name.startswith(
-                        f"urn:dev:prm:{metadata.device.identifier.value}"
-                    )
-                )
+                self.assert_valid_meta_and_record(metadata, record)
 
     def test_day_prefix(self):
 
@@ -102,16 +126,10 @@ class TestStreams(unittest.TestCase):
         self.assertTrue(len(records_by_meta[0][1]) > 0)
 
 
-class TestHdm(unittest.TestCase):
+class TestHdm(TestStreams):
     def assert_load_curve(self, meta, record):
-        self.assertEqual(meta.measurement.unit, MeasurementUnit.W)
-        self.assertRegex(meta.device.identifier.value, r"^\d{14}$")
-
-        self.assertEqual(record.unit, meta.measurement.unit.value)
-        self.assertEqual(
-            record.name,
-            f"urn:dev:prm:{meta.device.identifier.value}_consumption/power/active/raw",
-        )
+        self.assert_valid_meta_and_record(meta, record)
+        self.assertTrue(record.name.endswith("consumption/power/active/raw"))
 
     def test_c5_cdc(self):
         stream_files = StreamFiles(

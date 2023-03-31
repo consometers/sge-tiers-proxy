@@ -47,7 +47,7 @@ class MeasurementUnit(Enum):
     VA = "VA"
     WH = "Wh"
     V = "V"
-    WR = "Wr"  # seems to be VAr in data files Wr in docs
+    WR = "Wr"  # TODO seems to be VAr in data files Wr in docs, should be VAr?
 
 
 class MeasurementQuantity(Enum):
