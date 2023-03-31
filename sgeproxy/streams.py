@@ -327,9 +327,15 @@ class R50:
 
             for pdc in prm.findall("./Donnees_Releve/PDC"):
                 datetime_str = _find_text(pdc, "H")
-                value = int(_find_text(pdc, "V"))
-                caution = int(_find_text(pdc, "IV"))
+                # Sometime date is prensent but not value
+                value_element = pdc.find("V")
+                value_text = value_element.text if value_element is not None else None
+                if value_text is None:
+                    logging.warning(f"missing values for {usage_point}")
+                    continue
+                value = int(value_text)
 
+                caution = int(_find_text(pdc, "IV"))
                 if caution:
                     logging.warning(f"caution {caution} is not handled yet")
 

@@ -2,7 +2,7 @@ import unittest
 import os
 
 from sgeproxy.publisher import RecordsByName, StreamsFiles, StreamFiles
-from sgeproxy.streams import R171, R4x, Hdm
+from sgeproxy.streams import R171, R50, R4x, Hdm
 from sgeproxy.metadata import MeasurementDirection
 from quoalise.data import Data, Metadata, Record
 from slixmpp.xmlstream import ET
@@ -179,6 +179,33 @@ class TestR4x(TestStreams):
             for data_file in data_files:
                 r4x = R4x(data_file)
                 for meta, record in r4x.records():
+                    self.assert_valid_meta_and_record(meta, record)
+
+
+class TestR50(TestStreams):
+    def test_periods_stamped_at_the_begining(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "R50", "missing_values.zip"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            r50 = R50(data_file)
+            _, record = next(r50.records())
+            self.assertEqual(record.time.isoformat(), "2023-01-26T00:00:00+01:00")
+
+    def test_missing_values(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "R50", "missing_values.zip"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            for data_file in data_files:
+                r50 = R50(data_file)
+                for meta, record in r50.records():
                     self.assert_valid_meta_and_record(meta, record)
 
 
