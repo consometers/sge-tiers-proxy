@@ -319,9 +319,12 @@ class Subscribe:
                         usage_point.segment = UsagePointSegment[
                             technical_data.donneesGenerales.segment.libelle
                         ]
-                        usage_point.service_level = int(
-                            technical_data.donneesGenerales.niveauOuvertureServices
-                        )
+                        if hasattr(
+                            technical_data.donneesGenerales, "niveauOuvertureServices"
+                        ):
+                            usage_point.service_level = int(
+                                technical_data.donneesGenerales.niveauOuvertureServices
+                            )
 
                     subscription = Subscription(
                         user=user,
