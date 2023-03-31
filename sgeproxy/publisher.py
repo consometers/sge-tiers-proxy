@@ -137,6 +137,7 @@ class StreamsFiles:
             r"^ERDF_R151_.+\.zip$": sgeproxy.streams.R151,
             r"^ERDF_R50_.+\.zip$": sgeproxy.streams.R50,
             r"^ENEDIS_.+_R4Q_CDC_.+\.zip$": sgeproxy.streams.R4x,
+            r"^Enedis_SGE_HDM.+\.csv$": sgeproxy.streams.Hdm,
         }
 
         stream_handler = None
@@ -151,9 +152,16 @@ class StreamsFiles:
 
         with self.open(path) as data_files:
             for data_file in data_files:
-                stream = stream_handler(data_file)
-                for metadata, record in stream.records():
-                    yield metadata, record  # or yield stream.records()?
+                # FIXME(cyril) history is published like subscriptions for now
+                if stream_handler == sgeproxy.streams.Hdm:
+                    with sgeproxy.streams.Hdm.open(data_file) as io:
+                        stream = stream_handler(io)
+                        for metadata, record in stream.records():
+                            yield metadata, record
+                else:
+                    stream = stream_handler(data_file)
+                    for metadata, record in stream.records():
+                        yield metadata, record  # or yield stream.records()?
 
         self.archive(path)
 
