@@ -68,7 +68,7 @@ class R171:
             if temporal_class_owner == "D":
                 temporal_class_owner = "distributor"
             else:
-                raise RuntimeError("Is this supposed to happen?")
+                temporal_class_owner = "provider"
 
             base_name = f"urn:dev:prm:{usage_point}_{direction}"
             ea_meta = MetadataEnedisConsumptionEnergyActiveIndex(usage_point)

@@ -238,6 +238,26 @@ class TestR171(TestStreams):
             # It seems to be either one or the other, not both
             self.assertTrue(len(prms_pmax_active.intersection(prms_pmax_apparent)) == 0)
 
+    def test_provider_calendar(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "R171", "provider_calendar.zip"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        prms = set()
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            r171 = R171(data_file)
+            for meta, record in r171.records():
+                self.assert_valid_meta_and_record(meta, record)
+                if "provider" in record.name:
+                    prms.add(meta.device.identifier.value)
+                # FIXME sum of indices for provider and distributor do not match
+                # FIXME pmax is not given both for provider and distributor
+        self.assertTrue(len(prms) > 0)
+        # print(prms)
+
 
 class TestHdm(TestStreams):
     def test_c5_cdc(self):
