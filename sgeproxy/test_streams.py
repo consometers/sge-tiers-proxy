@@ -133,6 +133,22 @@ class TestDayStreams(TestStreams):
         self.assertTrue(len(records_by_meta[0][1]) > 0)
 
 
+class TestQuarantine(TestStreams):
+    def test_quarantine(self):
+
+        streams_files = StreamsFiles(
+            inbox_dir=None,
+            archive_dir=os.path.join(TEST_DATA_DIR, "quarantine"),
+            errors_dir=None,
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+            publish_archives=True,
+        )
+        for f in streams_files.glob():
+            for meta, record in streams_files.file_records(f):
+                self.assert_valid_meta_and_record(meta, record)
+
+
 class TestR4x(TestStreams):
 
     # Around 2023-03-20, sampling rate was changed to 5 min on some points
