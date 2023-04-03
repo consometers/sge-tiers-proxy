@@ -341,6 +341,10 @@ if __name__ == "__main__":
         publish_archives=args.publish_archives,
     )
 
+    xmpp.connect()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(asyncio.wait_for(xmpp.session_started, 10))
+
     files = list(streams_files.glob())
     records_by_name = RecordsByName()
 
@@ -360,12 +364,6 @@ if __name__ == "__main__":
         # Send records little by little
         if records_by_name.count() > 1000 or len(files) == 0:
 
-            xmpp.connect()
-
-            loop = asyncio.get_event_loop()
-
-            loop.run_until_complete(asyncio.wait_for(xmpp.session_started, 10))
-
             for sub in db_session.query(Subscription).all():
                 # TODO move check to query
                 if args.user and args.user != sub.user_id:
@@ -384,6 +382,5 @@ if __name__ == "__main__":
                             xmpp.send_data(sub.user_id, metadata, records)
                         )
 
-            xmpp.disconnect()
-
         records_by_name = RecordsByName()
+    xmpp.disconnect()
