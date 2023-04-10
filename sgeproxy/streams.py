@@ -4,6 +4,7 @@ from typing import Dict, Iterable, Optional, List, Tuple, Union, TextIO
 import xml.etree.ElementTree as ET
 import datetime as dt
 import pytz
+import re
 
 from quoalise.data import Record
 from sgeproxy.metadata import Metadata, SamplingInterval
@@ -482,6 +483,16 @@ class Hdm:
         return self.csv_meta["Identifiant PRM"]
 
     def records(self, is_c5) -> Iterable[Tuple[Metadata, Record]]:
+        if self.csv_meta["Type de donnees"] == "Courbe de charge":
+            fn = self.cdc_records
+        elif self.csv_meta["Type de donnees"] == "Index":
+            fn = self.idx_records
+        else:
+            raise ValueError(f"Unexpected data type {self.csv_meta['Type de donnees']}")
+        for meta, record in fn(is_c5):
+            yield meta, record
+
+    def cdc_records(self, is_c5) -> Iterable[Tuple[Metadata, Record]]:
 
         assert self.csv_meta["Type de donnees"] == "Courbe de charge"
         assert self.csv_meta["Grandeur physique"] == "Energie active"
@@ -560,4 +571,300 @@ class Hdm:
                 usage_point, sampling_interval
             )
             record = Record(name, datetime, unit, value)
+            yield meta, record
+
+    def idx_records(self, is_c5) -> Iterable[Tuple[Metadata, Record]]:
+
+        assert self.csv_meta["Type de donnees"] == "Index"
+        assert self.csv_meta["Grandeur physique"] == "Energie active"
+
+        ea_meta = MetadataEnedisConsumptionEnergyActiveIndex(self.usage_point())
+        direction = "consumption"
+        base_name = f"urn:dev:prm:{self.usage_point()}_{direction}"
+
+        index_header = next(self.csv_file).strip().split(";")
+        assert index_header == [
+            "Horodate",
+            "Type de releve",
+            "EAS F1",
+            "EAS F2",
+            "EAS F3",
+            "EAS F4",
+            "EAS F5",
+            "EAS F6",
+            "EAS F7",
+            "EAS F8",
+            "EAS F9",
+            "EAS F10",
+            "EAS D1",
+            "EAS D2",
+            "EAS D3",
+            "EAS D4",
+            # Index totalisateur
+            #
+            # L’index totalisateur correspond à la somme de tous les
+            # index (Fournisseur ou Distributeur) du compteur.
+            # Cela signifie qu’il peut prendre en compte des index qui
+            # ne sont pas transmis car non utilisés dans la grille
+            # programmée à la date du relevé.
+            # For instance with the following data, happening when switching
+            # contract. Total remains the same, some sub counters no longer
+            # appear in the data, but they are still used to compute the sum.
+            #
+            # 2020-10-13T00:00:00+02:00;Arrêté quotidien;42595832;39139315;1763620;7177480;634973;4148978;;;;;95460198;;;;95460198 # noqa: E501
+            # 2020-10-14T00:00:00+02:00;Arrêté quotidien;42782598;39139315;1763620;7177480;634973;4148978;;;;;95646964;;;;95646964 # noqa: E501
+            # 2020-10-15T00:00:00+02:00;Arrêté quotidien;42968066;;;;;;;;;;95832432;;;;95832432 # noqa: E501
+            # 2020-10-16T00:00:00+02:00;Arrêté quotidien;43169396;;;;;;;;;;96033762;;;;96033762 # noqa: E501
+            "EAS T",
+        ]
+        index_values = []
+        for row in self.csv_file:
+            values = row.strip().split(";")
+            if len(values) != len(index_header):
+                break
+            assert values[1] == "Arrêté quotidien"
+
+            time = dt.datetime.fromisoformat(values[0])
+            f_counters_str = values[2 : 2 + 10]
+            d_counters_str = values[2 + 10 : 2 + 10 + 4]
+            total_str = values[2 + 10 + 4]
+
+            f_counters = [int(v) if v != "" else None for v in f_counters_str]
+            d_counters = [int(v) if v != "" else None for v in d_counters_str]
+            total = int(total_str) if total_str != "" else None
+
+            index_values.append(
+                (
+                    time,
+                    f_counters,
+                    d_counters,
+                    total,
+                )
+            )
+
+        if len(index_values) != 0:
+            # Calendar information does not seem to be included when
+            # no index values are present, to be confirmed.
+            calendar_header = row.strip().split(";")
+            assert calendar_header == [
+                "Periode",
+                "Identifiant calendrier fournisseur",
+                "Libelle calendrier fournisseur",
+                "Identifiant classe temporelle 1",
+                "Libelle classe temporelle 1",
+                "Cadran classe temporelle 1",
+                "Identifiant classe temporelle 2",
+                "Libelle classe temporelle 2",
+                "Cadran classe temporelle 2",
+                "Identifiant classe temporelle 3",
+                "Libelle classe temporelle 3",
+                "Cadran classe temporelle 3",
+                "Identifiant classe temporelle 4",
+                "Libelle classe temporelle 4",
+                "Cadran classe temporelle 4",
+                "Identifiant classe temporelle 5",
+                "Libelle classe temporelle 5",
+                "Cadran classe temporelle 5",
+                "Identifiant classe temporelle 6",
+                "Libelle classe temporelle 6",
+                "Cadran classe temporelle 6",
+                "Identifiant classe temporelle 7",
+                "Libelle classe temporelle 7",
+                "Cadran classe temporelle 7",
+                "Identifiant classe temporelle 8",
+                "Libelle classe temporelle 8",
+                "Cadran classe temporelle 8",
+                "Identifiant classe temporelle 9",
+                "Libelle classe temporelle 9",
+                "Cadran classe temporelle 9",
+                "Identifiant classe temporelle 10",
+                "Libelle classe temporelle 10",
+                "Cadran classe temporelle 10",
+                "Identifiant calendrier distributeur",
+                "Libelle calendrier distributeur",
+                "Identifiant classe temporelle distributeur 1",
+                "Libelle classe temporelle distributeur 1",
+                "Cadran classe temporelle distributeur 1",
+                "Identifiant classe temporelle distributeur 2",
+                "Libelle classe temporelle distributeur 2",
+                "Cadran classe temporelle distributeur 2",
+                "Identifiant classe temporelle distributeur 3",
+                "Libelle classe temporelle distributeur 3",
+                "Cadran classe temporelle distributeur 3",
+                "Identifiant classe temporelle distributeur 4",
+                "Libelle classe temporelle distributeur 4",
+                "Cadran classe temporelle distributeur 4",
+            ]
+            calendar_values = []
+            for row in self.csv_file:
+                values = row.strip().split(";")
+                if len(values) != len(calendar_header):
+                    # Most likely pmax meta header
+                    break
+
+                # Du 2020-03-31T00:00:00+02:00 au 2020-11-18T23:00:00+01:00
+                m = re.match(r"^Du (.{25}) au (.{25})$", values[0])
+                if m:
+                    period_from = dt.datetime.fromisoformat(m.group(1))
+                    period_to = dt.datetime.fromisoformat(m.group(2))
+                else:
+                    # Du 2020-11-18T23:00:00+01:00 au
+                    m = re.match(r"^Du (.{25}) au$", values[0])
+                    if m:
+                        period_from = dt.datetime.fromisoformat(m.group(1))
+                        period_to = dt.datetime.now().astimezone()
+                    else:
+                        raise ValueError(f"Unexpected calendar period {values[0]}")
+
+                provider_ids = []
+                for i in range(10):
+                    provider_ids.append(values[3 + 3 * i].lower())
+
+                distributor_ids = []
+                for i in range(4):
+                    distributor_ids.append(values[3 + 3 * 10 + 2 + 3 * i].lower())
+
+                calendar_values.append(
+                    (
+                        period_from,
+                        period_to,
+                        provider_ids,
+                        distributor_ids,
+                    )
+                )
+
+            # Assert end of each period is the begining of the following
+            for i in range(len(calendar_values) - 1):
+                assert calendar_values[i][1] == calendar_values[i + 1][0]
+
+            for cal_from, cal_to, provider_ids, distributor_ids in calendar_values:
+
+                p_total_prev = None
+                d_total_prev = None
+                total_prev = None
+
+                while len(index_values) > 0:
+                    time, p_counters, d_counters, total = index_values[0]
+                    assert time >= cal_from
+                    if time >= cal_to:
+                        break
+
+                    # Sometimes index values can be found while the corresponding
+                    # counter is not supposed to be used. Do not take those into
+                    # account because it makes the diff check fail.
+
+                    # For instance:
+                    # 2022-02-27T23:00:00+01:00;Arrêté quotidien;10341184;29044825;;;;;;;;;40471015;;;;40471015 # noqa: E501
+                    # 2022-02-28T23:00:00+01:00;Arrêté quotidien;10359381;29104538;191045;735201;36448;122312;0;0;0;0;40548925;0;0;0;40548925 # noqa: E501
+                    # 2022-03-01T23:00:00+01:00;Arrêté quotidien;10374734;29155833;;;;;;;;;40615573;;;;40615573  # noqa: E501
+                    for i in range(10):
+                        if provider_ids[i] == "":
+                            p_counters[i] = None
+
+                    for i in range(4):
+                        if distributor_ids[i] == "":
+                            d_counters[i] = None
+
+                    p_counters_ints = [v for v in p_counters if v is not None]
+                    d_counters_ints = [v for v in d_counters if v is not None]
+
+                    p_total = sum(p_counters_ints) if p_counters_ints else None
+                    d_total = sum(d_counters_ints) if d_counters_ints else None
+
+                    # Suppose that totals are either all not None or all None
+                    if d_total is None:
+                        assert p_total is None
+                        assert total is None
+                    else:
+                        assert p_total is not None
+                        assert total is not None
+
+                    if d_total is not None and d_total_prev is not None:
+                        d_diff = d_total - d_total_prev
+                        p_diff = p_total - p_total_prev
+                        diff = total - total_prev
+                        assert d_diff == p_diff
+                        assert d_diff == diff
+
+                    p_total_prev = p_total
+                    d_total_prev = d_total
+                    total_prev = total
+
+                    index_values.pop(0)
+                    if d_total is None:
+                        continue
+
+                    # Everything is ok, publish values, use distributor sum as total,
+                    # like for daily streams, might change in the future.
+
+                    temporal_class_owner = "provider"
+                    for i in range(10):
+                        temporal_class = provider_ids[i]
+                        if temporal_class == "":
+                            continue
+                        name = (
+                            base_name
+                            + "/energy/active/index/"
+                            + temporal_class_owner
+                            + "/"
+                            + temporal_class
+                        )
+                        record = Record(name, time, "Wh", p_counters[i])
+                        yield ea_meta, record
+
+                    temporal_class_owner = "distributor"
+                    for i in range(4):
+                        temporal_class = distributor_ids[i]
+                        if temporal_class == "":
+                            continue
+                        name = (
+                            base_name
+                            + "/energy/active/index/"
+                            + temporal_class_owner
+                            + "/"
+                            + temporal_class
+                        )
+                        record = Record(name, time, "Wh", d_counters[i])
+                        yield ea_meta, record
+
+                    name = base_name + "/energy/active/index"
+                    record = Record(name, time, "Wh", d_total)
+                    yield ea_meta, record
+
+        assert len(index_values) == 0
+
+        pmax_meta_header = row.strip().split(";")
+        pmax_meta_values = next(self.csv_file).strip().split(";")
+
+        assert len(pmax_meta_header) == len(pmax_meta_values)
+        pmax_meta = dict(zip(pmax_meta_header, pmax_meta_values))
+
+        assert pmax_meta["Identifiant PRM"] == self.usage_point()
+        assert pmax_meta["Type de donnees"] == "Puissance maximale quotidienne"
+        assert pmax_meta["Grandeur physique"] == "Puissance maximale atteinte"
+        assert pmax_meta["Grandeur metier"] == "Consommation"
+        # Seems to be empty sometimes
+        # assert pmax_meta['Etape metier'] == 'Comptage Brut'
+        # Seems to be empty sometimes
+        # Docs tell this is an error, should be VA
+        # assert pmax_meta['Unite'] == 'W'
+
+        meta = MetadataEnedisConsumptionPowerApparentMax(self.usage_point())
+
+        pmax_header = next(self.csv_file).strip().split(";")
+        assert pmax_header == ["Horodate", "Valeur"]
+
+        for row in self.csv_file:
+            values = row.strip().split(";")
+            assert len(values) == len(pmax_header)
+            # Some row have no values specified
+            if values[1] == "":
+                continue
+            time = dt.datetime.fromisoformat(values[0])
+            value = int(values[1])
+            name = base_name + "/power/apparent/max"
+            unit = "VA"
+            # TODO(cyril) valid over a period of time,
+            # should be stamped at the begining
+            record = Record(name, time, unit, value)
             yield meta, record

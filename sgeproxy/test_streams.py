@@ -6,6 +6,7 @@ from sgeproxy.streams import R171, R50, R4x, Hdm
 from sgeproxy.metadata import MeasurementDirection
 from quoalise.data import Data, Metadata, Record
 from slixmpp.xmlstream import ET
+import datetime as dt
 
 TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test_data", "streams")
 
@@ -366,6 +367,149 @@ class TestHdm(TestStreams):
                 self.assertEqual(
                     records[0].time.isoformat(), "2020-02-03T00:00:00+01:00"
                 )
+
+    def test_c5_idx(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_IDX.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                base_name = f"urn:dev:prm:{hdm.usage_point()}_consumption"
+
+                some_expected_values = set()
+                expected_names = set()
+                for n, t, val in [
+                    ("energy/active/index", "2020-03-31T00:00:00+02:00", 17657737),
+                    (
+                        "energy/active/index/distributor/base",
+                        "2020-03-31T00:00:00+02:00",
+                        17657737,
+                    ),
+                    (
+                        "energy/active/index/provider/bchc",
+                        "2020-03-31T00:00:00+02:00",
+                        1600657,
+                    ),
+                    (
+                        "energy/active/index/provider/bchp",
+                        "2020-03-31T00:00:00+02:00",
+                        3970026,
+                    ),
+                    (
+                        "energy/active/index/provider/buhc",
+                        "2020-03-31T00:00:00+02:00",
+                        8513679,
+                    ),
+                    (
+                        "energy/active/index/provider/buhp",
+                        "2020-03-31T00:00:00+02:00",
+                        21865270,
+                    ),
+                    (
+                        "energy/active/index/provider/rhc",
+                        "2020-03-31T00:00:00+02:00",
+                        933661,
+                    ),
+                    (
+                        "energy/active/index/provider/rhp",
+                        "2020-03-31T00:00:00+02:00",
+                        2213173,
+                    ),
+                    (
+                        "energy/active/index/provider/hc",
+                        "2023-01-25T23:00:00+01:00",
+                        14228168,
+                    ),
+                    (
+                        "energy/active/index/provider/hp",
+                        "2023-01-25T23:00:00+01:00",
+                        32744893,
+                    ),
+                    ("power/apparent/max", "2023-01-24T16:56:41+01:00", 4641),
+                ]:
+                    name = f"{base_name}/{n}"
+                    time = dt.datetime.fromisoformat(t)
+                    some_expected_values.add((name, time, val))
+                    expected_names.add(name)
+
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+                    footprint = (record.name, record.time, record.value)
+                    some_expected_values.discard(footprint)
+                    self.assertTrue(record.name in expected_names)
+
+                self.assertEqual(len(some_expected_values), 0)
+
+    def test_c5_idx_empty(self):
+        # File only contains headers with no values
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_IDX_empty.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            records = []
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+                    records.append(record)
+            self.assertEqual(len(records), 0)
+
+    # TODO compare with values from a day stream
+    # (are we computing total correctly?)
+
+    # 2020-10-13T00:00:00+02:00;Arrêté quotidien;42595832;39139315;1763620;7177480;634973;4148978;;;;;95460198;;;;95460198 # noqa: E501
+    # 2020-10-14T00:00:00+02:00;Arrêté quotidien;42782598;39139315;1763620;7177480;634973;4148978;;;;;95646964;;;;95646964 # noqa: E501
+    # 2020-10-15T00:00:00+02:00;Arrêté quotidien;42968066;;;;;;;;;;95832432;;;;95832432 # noqa: E501
+    # 2020-10-16T00:00:00+02:00;Arrêté quotidien;43169396;;;;;;;;;;96033762;;;;96033762 # noqa: E501
+    def test_c5_idx_total_is_distributor(self):
+        # File only contains headers with no values
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_IDX_total_is_distributor.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            records = []
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+                    records.append(record)
+            self.assertTrue(len(records) > 0)
+
+    # Counter values can be found in data but calendar tell they should not be used
+    #
+    # 2022-02-27T23:00:00+01:00;Arrêté quotidien;10341184;29044825;;;;;;;;;40471015;;;;40471015 # noqa: E501
+    # 2022-02-28T23:00:00+01:00;Arrêté quotidien;10359381;29104538;191045;735201;36448;122312;0;0;0;0;40548925;0;0;0;40548925 # noqa: E501
+    # 2022-03-01T23:00:00+01:00;Arrêté quotidien;10374734;29155833;;;;;;;;;40615573;;;;40615573 # noqa: E501
+    def test_c5_idx_unexpected_counters_values(self):
+        # File only contains headers with no values
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_IDX_unexpected_counters_values.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            records = []
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+                    records.append(record)
+            self.assertTrue(len(records) > 0)
 
 
 if __name__ == "__main__":
