@@ -20,6 +20,7 @@ class DeviceIdentifierEnedis(DeviceIdentifier):
 LOAD_CURVE_SAMPLING_INTERVALS = {
     5: SamplingInterval("PT5M"),
     10: SamplingInterval("PT10M"),
+    15: SamplingInterval("PT15M"),
     30: SamplingInterval("PT30M"),
     60: SamplingInterval("PT60M"),
 }

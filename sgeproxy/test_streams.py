@@ -39,6 +39,8 @@ class TestStreams(unittest.TestCase):
             self.assertEqual(record.unit, "W")
         elif series.startswith("consumption/power/inductive/raw"):
             self.assertEqual(record.unit, "Wr")
+        elif series.startswith("consumption/power/capacitive/raw"):
+            self.assertEqual(record.unit, "Wr")
         elif series.startswith("consumption/power/active/max"):
             self.assertEqual(record.unit, "W")
         elif series.startswith("consumption/power/apparent/max"):
@@ -347,6 +349,19 @@ class TestHdm(TestStreams):
                     records[0].time.isoformat(), "2021-01-07T13:00:00+01:00"
                 )
 
+    def test_c5_cdc_empty_line(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_CDC_empty_line.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                self.assertFalse(list(hdm.records(is_c5=True)))
+
     def test_c4_cdc(self):
         stream_files = StreamFiles(
             os.path.join(TEST_DATA_DIR, "HDM", "C4_CDC.csv"),
@@ -510,6 +525,164 @@ class TestHdm(TestStreams):
                     self.assert_valid_meta_and_record(meta, record)
                     records.append(record)
             self.assertTrue(len(records) > 0)
+
+    def test_cdc_unexpected_sampling(self):
+        """
+        Sometimes midnight value is not given.
+        In those cases 01:00 is skipped because it does not match a known
+        sampling rate.
+        TODO try to handle it better?
+        2022-10-25T22:00:00+02:00;372
+        2022-10-25T23:00:00+02:00;16
+        2022-10-26T01:00:00+02:00;16
+        2022-10-26T02:00:00+02:00;16
+        """
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "CDC_unexpected_sampling.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            records = []
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+                    records.append(record)
+            self.assertTrue(len(records) > 0)
+
+    def test_cdc_15min(self):
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "CDC_15min.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                found_15min = False
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+                    if meta.measurement.sampling_interval.value == "PT15M":
+                        found_15min = True
+            self.assertTrue(found_15min)
+
+    def test_cdc_duplicates(self):
+        """
+        2022-07-04T14:00:00+02:00;64
+        2022-07-04T14:00:00+02:00;64
+        2022-07-04T14:00:00+02:00;64
+        2022-07-04T14:00:00+02:00;64
+        2022-07-04T14:30:00+02:00;62
+        2022-07-04T14:30:00+02:00;62
+        2022-07-04T14:30:00+02:00;62
+        2022-07-04T14:30:00+02:00;62
+        """
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "CDC_duplicates.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            records = []
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+                    records.append(record)
+            self.assertEqual(28, len(records))
+
+    def test_c5_idx_provider_only(self):
+        """
+        Sometimes only the provider index is given
+        2020-08-28T00:00:00+02:00;Arrêté quotidien;14904429;;;;;;;;;;;;;;14904429
+        Thos lines are currently ignored since total is computed on distributor data
+        """
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_IDX_provider_only.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+
+    def test_c5_idx_no_calendar(self):
+        """
+        Dates but no values, calendar is omitted
+        2023-01-23T23:00:00+01:00;Arrêté quotidien;;;;;;;;;;;;;;;
+        2023-01-24T23:00:00+01:00;Arrêté quotidien;;;;;;;;;;;;;;;
+        2023-01-25T23:00:00+01:00;Arrêté quotidien;;;;;;;;;;;;;;;
+        Identifiant PRM;Type de donnees;Date de debut;Date de fin;Grandeur physique;Grandeur metier;Etape metier;Unite # noqa: E501
+        00000000000000;Puissance maximale quotidienne;30/03/2020;25/01/2023;Puissance maximale atteinte;Consommation;; # noqa: E501
+        Horodate;Valeur
+        2020-03-30T00:00:00+02:00;
+        2020-03-31T00:00:00+02:00;
+        2020-04-01T00:00:00+02:00;
+        """
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_IDX_no_calendar.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                self.assertFalse(list(hdm.records(is_c5=True)))
+
+    def test_c5_idx_decreasing(self):
+        """
+        Counter decreased at a time not corresponding to calendar change
+        2020-05-31T00:00:00+02:00;Arrêté quotidien;2513393;140442;;;;;;;;;1931591;533983;41339;146922;2653835 # noqa: E501
+        2020-06-01T00:00:00+02:00;Arrêté quotidien;2513924;141456;;;;;;;;;1932122;534997;41339;146922;2655380 # noqa: E501
+        2020-06-02T00:00:00+02:00;Arrêté quotidien;2514405;142501;;;;;;;;;1932603;536042;41339;0;2656906 # noqa: E501
+        2020-06-03T00:00:00+02:00;Arrêté quotidien;2514950;143534;;;;;;;;;1933148;537075;41339;0;2658484 # noqa: E501
+        2020-06-04T00:00:00+02:00;Arrêté quotidien;2515503;144599;;;;;;;;;1933701;538140;41339;0;2660102 # noqa: E501
+        """
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "C5_IDX_decreasing.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            records = []
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                for meta, record in hdm.records(is_c5=True):
+                    self.assert_valid_meta_and_record(meta, record)
+                    records.append(record)
+            self.assertTrue(len(records) > 0)
+
+    def test_no_meta(self):
+        """
+        File just contains the first line
+        Identifiant PRM;Type de donnees;Date de debut;Date de fin;Grandeur physique;Grandeur metier;Etape metier;Unite;Pas en minutes # noqa: E501
+        """
+        stream_files = StreamFiles(
+            os.path.join(TEST_DATA_DIR, "HDM", "no_meta.csv"),
+            aes_iv=Args.aes_iv,
+            aes_key=Args.aes_key,
+        )
+        with stream_files as data_files:
+            self.assertEqual(len(data_files), 1)
+            data_file = data_files[0]
+            with Hdm.open(data_file) as f:
+                hdm = Hdm(f)
+                self.assertFalse(list(hdm.records(is_c5=True)))
 
 
 if __name__ == "__main__":

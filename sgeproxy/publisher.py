@@ -127,6 +127,9 @@ class StreamsFiles:
 
         filename = os.path.basename(path)
 
+        if os.path.isdir(path):
+            return
+
         # We do nothing with stream transfer companion metadata for now
         if path.endswith("_svc.xml"):
             self.archive(path)

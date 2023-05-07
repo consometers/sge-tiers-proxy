@@ -474,15 +474,23 @@ class Hdm:
 
     def __init__(self, csv_file: TextIO) -> None:
         self.csv_file = csv_file
-        csv_meta_header = next(self.csv_file).strip().split(";")
-        csv_meta_values = next(self.csv_file).strip().split(";")
-        assert len(csv_meta_header) == len(csv_meta_values)
-        self.csv_meta = dict(zip(csv_meta_header, csv_meta_values))
+        csv_meta_header = next(self.csv_file, "").strip().split(";")
+        csv_meta_values = next(self.csv_file, "").strip().split(";")
+        if len(csv_meta_header) == len(csv_meta_values):
+            self.csv_meta = dict(zip(csv_meta_header, csv_meta_values))
+        else:
+            self.csv_meta = {}
+            logging.warning("Unexpected meta")
 
     def usage_point(self):
-        return self.csv_meta["Identifiant PRM"]
+        if self.csv_meta:
+            return self.csv_meta["Identifiant PRM"]
+        else:
+            return None
 
     def records(self, is_c5) -> Iterable[Tuple[Metadata, Record]]:
+        if not self.csv_meta:
+            return
         if self.csv_meta["Type de donnees"] == "Courbe de charge":
             fn = self.cdc_records
         elif self.csv_meta["Type de donnees"] == "Index":
@@ -528,6 +536,8 @@ class Hdm:
         for row in self.csv_file:
             values = row.strip().split(";")
             assert len(values) == 2
+            if values[0] == "":
+                continue
             datetime = dt.datetime.fromisoformat(values[0])
             if values[1] != "":
                 value = int(values[1])
@@ -565,7 +575,9 @@ class Hdm:
             diff_minutes = round(diff.total_seconds() / 60)
             sampling_interval = LOAD_CURVE_SAMPLING_INTERVALS.get(diff_minutes)
             if sampling_interval is None:
-                logging.warning("Unexpected sampling interval, skip value")
+                logging.warning(
+                    f"Unexpected sampling interval {diff_minutes}, skip value"
+                )
                 continue
             meta = MetadataEnedisConsumptionPowerActiveRaw(
                 usage_point, sampling_interval
@@ -618,6 +630,7 @@ class Hdm:
             "EAS T",
         ]
         index_values = []
+        got_values = False
         for row in self.csv_file:
             values = row.strip().split(";")
             if len(values) != len(index_header):
@@ -633,6 +646,9 @@ class Hdm:
             d_counters = [int(v) if v != "" else None for v in d_counters_str]
             total = int(total_str) if total_str != "" else None
 
+            if not got_values and total is not None:
+                got_values = True
+
             index_values.append(
                 (
                     time,
@@ -642,7 +658,7 @@ class Hdm:
                 )
             )
 
-        if len(index_values) != 0:
+        if got_values:
             # Calendar information does not seem to be included when
             # no index values are present, to be confirmed.
             calendar_header = row.strip().split(";")
@@ -771,20 +787,20 @@ class Hdm:
                     p_total = sum(p_counters_ints) if p_counters_ints else None
                     d_total = sum(d_counters_ints) if d_counters_ints else None
 
-                    # Suppose that totals are either all not None or all None
-                    if d_total is None:
-                        assert p_total is None
-                        assert total is None
+                    if total is not None and total_prev is not None:
+                        diff = total - total_prev
                     else:
-                        assert p_total is not None
-                        assert total is not None
+                        diff = None
 
                     if d_total is not None and d_total_prev is not None:
                         d_diff = d_total - d_total_prev
+                        if d_diff != diff:
+                            logging.warning("Unexpected distributor index")
+
+                    if p_total is not None and p_total_prev is not None:
                         p_diff = p_total - p_total_prev
-                        diff = total - total_prev
-                        assert d_diff == p_diff
-                        assert d_diff == diff
+                        if p_diff != diff:
+                            logging.warning("Unexpected provider index")
 
                     p_total_prev = p_total
                     d_total_prev = d_total
@@ -792,6 +808,8 @@ class Hdm:
 
                     index_values.pop(0)
                     if d_total is None:
+                        if p_total is not None:
+                            logging.warning("Idx for provider only")
                         continue
 
                     # Everything is ok, publish values, use distributor sum as total,
@@ -831,7 +849,7 @@ class Hdm:
                     record = Record(name, time, "Wh", d_total)
                     yield ea_meta, record
 
-        assert len(index_values) == 0
+            assert len(index_values) == 0
 
         pmax_meta_header = row.strip().split(";")
         pmax_meta_values = next(self.csv_file).strip().split(";")
