@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import datetime as dt
 import re
+import time
 from typing import Dict, List, Tuple, Iterable
 
 import slixmpp
@@ -132,7 +133,6 @@ class StreamsFiles:
 
         # We do nothing with stream transfer companion metadata for now
         if path.endswith("_svc.xml"):
-            self.archive(path)
             return
 
         filename_stream_patterns = {
@@ -168,8 +168,6 @@ class StreamsFiles:
                     stream = stream_handler(data_file)
                     for metadata, record in stream.records():
                         yield metadata, record  # or yield stream.records()?
-
-        self.archive(path)
 
 
 class StreamFiles:
@@ -349,24 +347,35 @@ if __name__ == "__main__":
     loop.run_until_complete(asyncio.wait_for(xmpp.session_started, 10))
 
     files = list(streams_files.glob())
-    records_by_name = RecordsByName()
 
     def is_prm_c5(prm):
         return db_session.query(UsagePoint).get(prm).segment == UsagePointSegment.C5
 
+    GROUP_FILES = 1
+    SLEEP_AFTER_FILES = 30
+
     while files:
-        f = files.pop(0)
-        logging.info(f"Parsing {f}")
-        try:
-            for metadata, record in streams_files.file_records(f, is_prm_c5):
-                records_by_name.add(metadata, record)
-        except Exception:
-            logging.exception(f"Unable to parse data from {f}")
-            streams_files.move_to_errors(f)
-
-        # Send records little by little
-        if records_by_name.count() > 1000 or len(files) == 0:
-
+        records_by_name = RecordsByName()
+        files_group: List[str] = []
+        # TODO add a datapoint limit?
+        while files and len(files_group) < GROUP_FILES:
+            f = files.pop(0)
+            if os.path.isdir(f):
+                continue
+            logging.info(f"Parsing {f}")
+            try:
+                file_records_count = 0
+                for metadata, record in streams_files.file_records(f, is_prm_c5):
+                    records_by_name.add(metadata, record)
+                    file_records_count += 1
+                if file_records_count > 0:
+                    files_group.append(f)
+                else:
+                    streams_files.archive(f)
+            except Exception:
+                logging.exception(f"Unable to parse data from {f}")
+                streams_files.move_to_errors(f)
+        if records_by_name.count() != 0:
             for sub in db_session.query(Subscription).all():
                 # TODO move check to query
                 if args.user and args.user != sub.user_id:
@@ -384,6 +393,13 @@ if __name__ == "__main__":
                         loop.run_until_complete(
                             xmpp.send_data(sub.user_id, metadata, records)
                         )
+        # Files have been sent, archive them
+        for f in files_group:
+            streams_files.archive(f)
 
-        records_by_name = RecordsByName()
+        # Wait a bit between data transfers
+        # TODO, add a datapoint rate limit instead?
+        if records_by_name.count() != 0:
+            time.sleep(SLEEP_AFTER_FILES)
+
     xmpp.disconnect()
