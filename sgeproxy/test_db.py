@@ -111,6 +111,19 @@ class TestDbIntegrity(unittest.TestCase):
 
         self.alice.consents.append(self.homer_consent_to_alice)
 
+        self.homer_consent_to_alice_renewed = Consent(
+            issuer_name="Simpson",
+            issuer_type="INDIVIDUAL",
+            begins_at=date_local(2023, 1, 1),
+            expires_at=date_local(2024, 1, 1),
+        )
+        self.homer_consent_to_alice_renewed.usage_points.append(
+            ConsentUsagePoint(usage_point=self.homer_usage_point, comment="Home")
+        )
+        self.session.add(self.homer_consent_to_alice_renewed)
+
+        self.alice.consents.append(self.homer_consent_to_alice_renewed)
+
         # The Springfield Nuclear Power Plant gave its consent to Sister,
         # allowing her to access his production data
 
@@ -522,6 +535,13 @@ class TestDbIntegrity(unittest.TestCase):
             self.session, self.burns_usage_point, date_local(2020, 1, 3)
         )
         self.assertEqual(consent, self.burns_consent_to_sister)
+
+    def test_db_find_renewed_consents(self):
+
+        consent = self.alice.consent_for(
+            self.session, self.homer_usage_point, date_local(2023, 1, 3)
+        )
+        self.assertEqual(consent, self.homer_consent_to_alice_renewed)
 
     def test_db_throws_exception_when_no_consent_given_for_usage_point(self):
 
