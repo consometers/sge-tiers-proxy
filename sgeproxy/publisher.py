@@ -278,6 +278,9 @@ if __name__ == "__main__":
         "--publish-archives", help="Send archives instead of inbox", action="store_true"
     )
     parser.add_argument("--user", help="Only send data to the specified user")
+    parser.add_argument(
+        "--filter", help="substring that should be found in records ids to keep"
+    )
     args = parser.parse_args()
 
     if args.publish_archives and not args.user:
@@ -366,8 +369,9 @@ if __name__ == "__main__":
             try:
                 file_records_count = 0
                 for metadata, record in streams_files.file_records(f, is_prm_c5):
-                    records_by_name.add(metadata, record)
-                    file_records_count += 1
+                    if not args.filter or args.filter in record.name:
+                        records_by_name.add(metadata, record)
+                        file_records_count += 1
                 if file_records_count > 0:
                     files_group.append(f)
                 else:
