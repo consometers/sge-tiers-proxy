@@ -73,25 +73,27 @@ class XmppPublisher(slixmpp.ClientXMPP):
         return message.send()
 
 
+class CorruptedFile(Exception):
+    pass
+
+
 class StreamsFiles:
     def __init__(
         self,
         inbox_dir,
         archive_dir,
         errors_dir,
-        aes_iv,
-        aes_key,
+        keys,
         publish_archives=False,
     ):
         self.inbox_dir = inbox_dir
         self.archive_dir = archive_dir
         self.errors_dir = errors_dir
-        self.aes_iv = aes_iv
-        self.aes_key = aes_key
+        self.keys = keys
         self.publish_archives = publish_archives
 
-    def open(self, file_path):
-        return StreamFiles(file_path, self.aes_iv, self.aes_key)
+    def open(self, file_path, aes_iv, aes_key):
+        return StreamFiles(file_path, aes_iv, aes_key)
 
     def archive(self, file_path):
         if self.publish_archives:
@@ -153,21 +155,28 @@ class StreamsFiles:
             logging.error(f"No handler for file {path}")
             return
 
-        with self.open(path) as data_files:
-            for data_file in data_files:
-                # FIXME(cyril) history is published like subscriptions for now
-                if stream_handler == sgeproxy.streams.Hdm:
-                    with sgeproxy.streams.Hdm.open(data_file) as io:
-                        stream = stream_handler(io)
-                        # FIXME(cyril) depending on db is ugly here
-                        for metadata, record in stream.records(
-                            is_c5=is_prm_c5(stream.usage_point())
-                        ):
-                            yield metadata, record
-                else:
-                    stream = stream_handler(data_file)
-                    for metadata, record in stream.records():
-                        yield metadata, record  # or yield stream.records()?
+        for key in self.keys:
+            try:
+                with self.open(path, key["aes_iv"], key["aes_key"]) as data_files:
+                    for data_file in data_files:
+                        # FIXME(cyril) history is published like subscriptions for now
+                        if stream_handler == sgeproxy.streams.Hdm:
+                            with sgeproxy.streams.Hdm.open(data_file) as io:
+                                stream = stream_handler(io)
+                                # FIXME(cyril) depending on db is ugly here
+                                for metadata, record in stream.records(
+                                    is_c5=is_prm_c5(stream.usage_point())
+                                ):
+                                    yield metadata, record
+                        else:
+                            stream = stream_handler(data_file)
+                            for metadata, record in stream.records():
+                                yield metadata, record  # or yield stream.records()?
+                return
+            except CorruptedFile:
+                # Try with the following key
+                continue
+        raise CorruptedFile(f"Unable to decrypt {path}")
 
 
 class StreamFiles:
@@ -184,27 +193,33 @@ class StreamFiles:
         filename = os.path.basename(self.inbox_file_path)
         temp_file = os.path.join(self.temp_dir, filename)
 
-        subprocess.run(
-            [
-                "openssl",
-                "enc",
-                "-d",
-                "-aes-128-cbc",
-                "-K",
-                self.aes_key,
-                "-iv",
-                self.aes_iv,
-                "-in",
-                self.inbox_file_path,
-                "-out",
-                temp_file,
-            ],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                [
+                    "openssl",
+                    "enc",
+                    "-d",
+                    "-aes-128-cbc",
+                    "-K",
+                    self.aes_key,
+                    "-iv",
+                    self.aes_iv,
+                    "-in",
+                    self.inbox_file_path,
+                    "-out",
+                    temp_file,
+                ],
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise CorruptedFile("openssl failed") from e
 
         # If unencrypted file is a zip archive, extract it
         if temp_file.endswith(".zip"):
-            subprocess.run(["unzip", temp_file, "-d", self.temp_dir], check=True)
+            try:
+                subprocess.run(["unzip", temp_file, "-d", self.temp_dir], check=True)
+            except subprocess.CalledProcessError as e:
+                raise CorruptedFile("unzip failed") from e
             os.remove(temp_file)
 
         files = []
@@ -340,8 +355,7 @@ if __name__ == "__main__":
         conf["streams"]["inbox_dir"],
         conf["streams"]["archive_dir"],
         conf["streams"]["errors_dir"],
-        conf["streams"]["aes_iv"],
-        conf["streams"]["aes_key"],
+        conf["streams"]["keys"],
         publish_archives=args.publish_archives,
     )
 
