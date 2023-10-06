@@ -277,6 +277,22 @@ class RecordsByName:
         return value
 
 
+class Throttle:
+    def __init__(self, record_rate):
+        self.record_rate = record_rate
+        self.begin = time.monotonic()
+        self.count = 0
+
+    def update(self, records_sent):
+        self.count += records_sent
+        throttled_duration = self.count / self.record_rate
+        actual_duration = time.monotonic() - self.begin
+        sleep_needed = throttled_duration - actual_duration
+        if sleep_needed > 0:
+            logging.info(f"Throttling, sleep {sleep_needed:.2f} s")
+            time.sleep(sleep_needed)
+
+
 if __name__ == "__main__":
 
     import argparse
@@ -368,8 +384,9 @@ if __name__ == "__main__":
     def is_prm_c5(prm):
         return db_session.query(UsagePoint).get(prm).segment == UsagePointSegment.C5
 
-    GROUP_FILES = 1
-    SLEEP_AFTER_FILES = 30
+    GROUP_FILES = 10
+
+    throttle = Throttle(100)
 
     while files:
         records_by_name = RecordsByName()
@@ -411,13 +428,9 @@ if __name__ == "__main__":
                         loop.run_until_complete(
                             xmpp.send_data(sub.user_id, metadata, records)
                         )
+                        throttle.update(len(records))
         # Files have been sent, archive them
         for f in files_group:
             streams_files.archive(f)
-
-        # Wait a bit between data transfers
-        # TODO, add a datapoint rate limit instead?
-        if records_by_name.count() != 0:
-            time.sleep(SLEEP_AFTER_FILES)
 
     xmpp.disconnect()
