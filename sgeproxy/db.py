@@ -394,6 +394,28 @@ class Subscription(Base):
     def notification_checks(self, notified_at=now_local()):
         return SubscriptionNotificationContext(self, notified_at)
 
+    # Tell which calls will no longer be valid for this subscription at the given date
+    def expired_calls(self, now=now_local()):
+        if self.series_name == "consumption/power/active/raw":
+            expired_calls = {
+                SubscriptionType.CONSUMPTION_CDC_ENABLE,
+                SubscriptionType.CONSUMPTION_CDC_RAW,
+            }
+        elif self.series_name in [
+            "consumption/energy/active/index",
+            "consumption/power/apparent/max",
+        ]:
+            expired_calls = {SubscriptionType.CONSUMPTION_IDX}
+        else:
+            raise ValueError("Unexpected subscription type")
+
+        for call in self.webservices_calls:
+            if call.call_type in expired_calls and call.expires_at > now:
+                expired_calls.remove(call.call_type)
+            if not expired_calls:
+                break
+        return expired_calls
+
 
 class SubscriptionNotificationContext:
     def __init__(self, subscription, notified_at):
