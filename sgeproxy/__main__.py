@@ -93,7 +93,7 @@ if __name__ == "__main__":
     logging.basicConfig()
     debug: List[str] = []
 
-    debug.append("slixmpp")
+    # debug.append("slixmpp")
 
     for logger_name in debug:
         logger = logging.getLogger(logger_name)
