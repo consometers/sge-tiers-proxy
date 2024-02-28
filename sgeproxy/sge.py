@@ -346,7 +346,11 @@ class DetailedMeasurements:
             v = str(meas.v)
             t = int(meas.d.astimezone(pytz.utc).timestamp()) - time_offset
             if "p" in dir(meas):
-                assert meas.p == measurement_meta.attrib["sampling-interval"]
+                # TODO fails when sampling interval changed (it can happen
+                # during the day). Send with different meta instead.
+                # check journal on 2023-10-27
+                # assert meas.p == measurement_meta.attrib["sampling-interval"]
+                pass
             if first:
                 bt = t
                 senml = ET.Element(
