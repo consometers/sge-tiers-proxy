@@ -3,6 +3,7 @@ import unittest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import text
 from sgeproxy.db import (
     Migration,
     SubscriptionStatus,
@@ -49,8 +50,8 @@ class TestDbMigrations(unittest.TestCase):
 
         with engine.connect() as con:
 
-            con.execute("DROP SCHEMA public CASCADE")
-            con.execute("CREATE SCHEMA public")
+            con.execute(text("DROP SCHEMA public CASCADE"))
+            con.execute(text("CREATE SCHEMA public"))
 
             Migration.migrate(con)
 
@@ -81,8 +82,8 @@ class TestDbIntegrity(unittest.TestCase):
 
         with engine.connect() as con:
 
-            con.execute("DROP SCHEMA public CASCADE")
-            con.execute("CREATE SCHEMA public")
+            con.execute(text("DROP SCHEMA public CASCADE"))
+            con.execute(text("CREATE SCHEMA public"))
 
             Migration.migrate(con)
 
@@ -213,25 +214,27 @@ class TestDbIntegrity(unittest.TestCase):
 
     def test_db_allows_call_within_consent_scope(self):
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.homer_usage_point,
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
             called_at=date_local(2020, 1, 2),
         )
+        self.session.add(call)
 
         self.session.commit()
 
     def test_db_denies_call_with_no_consent(self):
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.homer_usage_point,
             consent=None,
             user=self.alice,
             webservice="ConsultationMesures",
             called_at=date_local(2020, 1, 2),
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError):
             self.session.commit()
@@ -240,13 +243,14 @@ class TestDbIntegrity(unittest.TestCase):
         """
         Homer consent does not allow to access Burns usage point data.
         """
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.burns_usage_point,
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
             called_at=date_local(2020, 1, 2),
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError) as context:
             self.session.commit()
@@ -263,13 +267,14 @@ class TestDbIntegrity(unittest.TestCase):
         of a consent when it is open.
         """
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.burns_usage_point,
             consent=self.genius_open_consent,
             user=self.genius,
             webservice="ConsultationMesures",
             called_at=date_local(2020, 1, 2),
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError) as context:
             self.session.commit()
@@ -292,25 +297,27 @@ class TestDbIntegrity(unittest.TestCase):
             self.session, self.burns_usage_point, date_local(2020, 1, 2)
         )
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.burns_usage_point,
             consent=consent,
             user=self.genius,
             webservice="ConsultationMesures",
             called_at=date_local(2020, 1, 2),
         )
+        self.session.add(call)
 
         self.session.commit()
 
     def test_db_denies_call_with_no_usage_point(self):
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=None,
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
             called_at=date_local(2020, 1, 2),
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError):
             self.session.commit()
@@ -320,13 +327,14 @@ class TestDbIntegrity(unittest.TestCase):
         Alice cannot use consent from Burns (given to sister).
         """
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.burns_usage_point,
             consent=self.burns_consent_to_sister,
             user=self.alice,
             webservice="ConsultationMesures",
             called_at=date_local(2020, 1, 2),
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError) as context:
             self.session.commit()
@@ -336,13 +344,14 @@ class TestDbIntegrity(unittest.TestCase):
         )
 
     def test_db_denies_call_with_no_user(self):
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.burns_usage_point,
             consent=self.burns_consent_to_sister,
             user=None,
             webservice="ConsultationMesures",
             called_at=date_local(2020, 1, 2),
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError):
             self.session.commit()
@@ -352,13 +361,14 @@ class TestDbIntegrity(unittest.TestCase):
         Alice cannot access data before the period of time Homer consented to.
         """
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.homer_usage_point,
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
             called_at=date_local(2019, 1, 2),
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError) as context:
             self.session.commit()
@@ -370,13 +380,14 @@ class TestDbIntegrity(unittest.TestCase):
         Alice cannot access data after the period of time Homer consented to.
         """
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.homer_usage_point,
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
             called_at=date_local(2022, 1, 2),
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError) as context:
             self.session.commit()
@@ -385,13 +396,14 @@ class TestDbIntegrity(unittest.TestCase):
 
     def test_db_denies_call_with_no_date(self):
 
-        WebservicesCall(
+        call = WebservicesCall(
             usage_point=self.homer_usage_point,
             consent=self.homer_consent_to_alice,
             user=self.alice,
             webservice="ConsultationMesures",
             called_at=None,
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError) as context:
             self.session.commit()
@@ -437,8 +449,9 @@ class TestDbIntegrity(unittest.TestCase):
         )
         self.session.add(call)
 
-        consent_usage_point = self.session.query(ConsentUsagePoint).get(
-            (self.homer_consent_to_alice.id, self.homer_usage_point.id)
+        consent_usage_point = self.session.get(
+            ConsentUsagePoint,
+            (self.homer_consent_to_alice.id, self.homer_usage_point.id),
         )
         self.homer_consent_to_alice.usage_points.remove(consent_usage_point)
 
@@ -477,6 +490,7 @@ class TestDbIntegrity(unittest.TestCase):
             user=self.sister,
             webservice="ConsultationMesures",
         )
+        self.session.add(call)
 
         self.assertIsNone(call.status)
 
@@ -500,6 +514,7 @@ class TestDbIntegrity(unittest.TestCase):
             user=self.sister,
             webservice="ConsultationMesures",
         )
+        self.session.add(call)
 
         with self.assertRaises(SgeError):
             with CheckedWebserviceCall(call, self.session):
@@ -519,6 +534,7 @@ class TestDbIntegrity(unittest.TestCase):
             user=self.sister,
             webservice="ConsultationMesures",
         )
+        self.session.add(call)
 
         with self.assertRaises(IntegrityError):
             with CheckedWebserviceCall(call, self.session):
@@ -708,6 +724,7 @@ class TestDbIntegrity(unittest.TestCase):
                 self.session, self.homer_usage_point, date_local(2020, 2, 1)
             ),
         )
+        self.session.add(subscription)
 
         with self.assertRaises(IntegrityError):
             self.session.commit()
@@ -818,6 +835,7 @@ class TestDbIntegrity(unittest.TestCase):
             series_name="consumption/energy/index/hc",
             consent=self.burns_consent_to_sister,
         )
+        self.session.add(subscription)
 
         # Indices subscription have been called before, use it
 

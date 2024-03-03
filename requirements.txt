@@ -1,8 +1,8 @@
-slixmpp
-lowatt_enedis
+slixmpp==1.7.0
+lowatt_enedis==2.2.1
 pytz
 flake8
 black
 pre-commit
-sqlalchemy
-psycopg2
+sqlalchemy==1.4.32
+psycopg2==2.8.6

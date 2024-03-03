@@ -214,7 +214,7 @@ class UsagePoint(Base):
 
     id = Column(String(14), primary_key=True)
 
-    segment = Column(Enum(UsagePointSegment))
+    segment = Column(Enum(UsagePointSegment, name="usage_point_segment"))
     service_level = Column(Integer)
 
     webservices_calls = relationship("WebservicesCall", back_populates="usage_point")
@@ -226,7 +226,7 @@ class UsagePoint(Base):
 
     @staticmethod
     def find_or_create(session: Session, usage_point_id: str):
-        found = session.query(UsagePoint).get(usage_point_id)
+        found = session.get(UsagePoint, usage_point_id)
         if found is not None:
             return found
 
@@ -245,7 +245,7 @@ class Consent(Base):
 
     id = Column(Integer, primary_key=True)
     issuer_name = Column(Text)
-    issuer_type = Column(Enum(ConsentIssuerType))
+    issuer_type = Column(Enum(ConsentIssuerType, name="consent_issuer_type"))
     is_open = Column(Boolean, default=False)
     begins_at = Column(TZDateTime)
     expires_at = Column(TZDateTime)
@@ -282,7 +282,7 @@ class WebservicesCall(Base):
     consent_expires_at = Column(TZDateTime)
     called_at = Column(TZDateTime, default=now_local())
 
-    status = Column(Enum(WebservicesCallStatus))
+    status = Column(Enum(WebservicesCallStatus, name="webservices_call_status"))
     error = Column(Text)
 
     user = relationship("User", back_populates="webservices_calls")
@@ -370,7 +370,7 @@ class Subscription(Base):
     consent_begins_at = Column(TZDateTime)
     consent_expires_at = Column(TZDateTime)
 
-    status = Column(Enum(SubscriptionStatus))
+    status = Column(Enum(SubscriptionStatus, name="subscription_status"))
     error = Column(Text)
 
     user = relationship("User", back_populates="subscriptions")
@@ -456,7 +456,7 @@ class WebservicesCallsSubscriptions(Base):
     webservices_call_id = Column(Integer)
     consent_expires_at = Column(TZDateTime)
 
-    call_type = Column(Enum(SubscriptionType))
+    call_type = Column(Enum(SubscriptionType, name="subscription_type"))
 
     expires_at = Column(TZDateTime)
     call_id = Column(Integer)
