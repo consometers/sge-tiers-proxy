@@ -6,7 +6,7 @@ import unittest
 import quoalise
 import datetime as dt
 import pytz
-from typing import Tuple
+from typing import Tuple, Iterable
 from statistics import mean
 
 CONF_CLIENT = None
@@ -25,6 +25,11 @@ def previous_days(days: int) -> Tuple[dt.datetime, dt.datetime]:
     start_time = paris_tz.normalize(end_time - dt.timedelta(days=days))
 
     return start_time, end_time
+
+
+def print_records(records: Iterable[quoalise.data.Record]):
+    for r in records:
+        print(f"{r.time}: {r.value} {r.unit}")
 
 
 class TestGetMeasurement(unittest.TestCase):
@@ -64,6 +69,7 @@ class TestGetMeasurement(unittest.TestCase):
         start_time, end_time = previous_days(7)
         data = self.client.get_history(self.proxy, measurement, start_time, end_time)
         records = list(data.records)
+        # print_records(records)
         self.assertGreaterEqual(len(records), 0)
         self.assertEqual(records[0].name, measurement)
 
@@ -74,6 +80,7 @@ class TestGetMeasurement(unittest.TestCase):
         start_time, end_time = previous_days(30)
         data = self.client.get_history(self.proxy, measurement, start_time, end_time)
         records = list(data.records)
+        # print_records(records)
         self.assertGreaterEqual(len(records), 0)
         self.assertEqual(records[0].name, measurement)
 
@@ -84,6 +91,7 @@ class TestGetMeasurement(unittest.TestCase):
         start_time, end_time = previous_days(7)
         data = self.client.get_history(self.proxy, measurement, start_time, end_time)
         records = list(data.records)
+        # print_records(records)
         self.assertGreaterEqual(len(records), 0)
         self.assertEqual(records[0].name, measurement)
 

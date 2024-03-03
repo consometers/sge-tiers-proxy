@@ -25,7 +25,7 @@ async def main(conf, sge_credentials):
     db_engine = create_engine(conf["db"]["url"])
     db_session_maker = sessionmaker(bind=db_engine)
 
-    detailed_measurements = sgeproxy.sge.DetailedMeasurements(sge_credentials)
+    detailed_measurements = sgeproxy.sge.DetailedMeasurementsV3(sge_credentials)
     technical_data = sgeproxy.sge.TechnicalData(sge_credentials)
     subscribe = sgeproxy.sge.Subscribe(sge_credentials)
     unsubscribe = sgeproxy.sge.Unsubscribe(sge_credentials)

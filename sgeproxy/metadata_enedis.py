@@ -140,6 +140,27 @@ class MetadataEnedisConsumptionPowerActiveMax(Metadata):
         )
 
 
+class MetadataEnedisConsumptionEnergyActive(Metadata):
+
+    MEASUREMENT = Measurement(
+        name="active-energy",
+        quantity=MeasurementQuantity.ENERGY,
+        type=MeasurementType.ELECTRICAL,
+        direction=MeasurementDirection.CONSUMPTION,
+        unit=MeasurementUnit.WH,
+        sampling_interval=SamplingInterval("P1D"),
+    )
+
+    def __init__(self, prm: str):
+        super().__init__(
+            device=Device(
+                type=DeviceType.ELECTRICITY_METER,
+                identifier=DeviceIdentifierEnedis(prm),
+            ),
+            measurement=self.MEASUREMENT,
+        )
+
+
 class MetadataEnedisConsumptionEnergyActiveIndex(Metadata):
 
     MEASUREMENT = Measurement(
@@ -147,6 +168,45 @@ class MetadataEnedisConsumptionEnergyActiveIndex(Metadata):
         quantity=MeasurementQuantity.ENERGY,
         type=MeasurementType.ELECTRICAL,
         direction=MeasurementDirection.CONSUMPTION,
+        unit=MeasurementUnit.WH,
+        sampling_interval=SamplingInterval("P1D"),
+    )
+
+    def __init__(self, prm: str):
+        super().__init__(
+            device=Device(
+                type=DeviceType.ELECTRICITY_METER,
+                identifier=DeviceIdentifierEnedis(prm),
+            ),
+            measurement=self.MEASUREMENT,
+        )
+
+
+class MetadataEnedisProductionPowerActiveRaw(Metadata):
+    def __init__(self, prm: str, sampling_interval: SamplingInterval):
+        super().__init__(
+            device=Device(
+                type=DeviceType.ELECTRICITY_METER,
+                identifier=DeviceIdentifierEnedis(prm),
+            ),
+            measurement=Measurement(
+                name="active-power",
+                quantity=MeasurementQuantity.POWER,
+                type=MeasurementType.ELECTRICAL,
+                direction=MeasurementDirection.PRODUCTION,
+                unit=MeasurementUnit.W,
+                sampling_interval=sampling_interval,
+            ),
+        )
+
+
+class MetadataEnedisProductionEnergyActive(Metadata):
+
+    MEASUREMENT = Measurement(
+        name="active-energy",
+        quantity=MeasurementQuantity.ENERGY,
+        type=MeasurementType.ELECTRICAL,
+        direction=MeasurementDirection.PRODUCTION,
         unit=MeasurementUnit.WH,
         sampling_interval=SamplingInterval("P1D"),
     )

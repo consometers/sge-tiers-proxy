@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 
 import datetime as dt
-from pytz import timezone
-from typing import Any, Dict, Optional, Set
+import zoneinfo
+from typing import Any, Dict, Optional, Type
+import inspect
+from sgeproxy.metadata_enedis import (
+    MetadataEnedisConsumptionPowerActiveRaw,
+    MetadataEnedisConsumptionEnergyActive,
+    MetadataEnedisProductionPowerActiveRaw,
+    MetadataEnedisProductionEnergyActive,
+)
+from sgeproxy.metadata import SamplingInterval
+import quoalise.data
 import suds
 
 import lowatt_enedis
@@ -10,13 +19,12 @@ import lowatt_enedis.services
 
 # TODO move to quoalise
 import re
-from slixmpp.xmlstream import ElementBase, ET
-import pytz
+from slixmpp.xmlstream import ElementBase
 
 import sgeproxy.config
 from sgeproxy.db import SubscriptionType, now_local
 
-PARIS_TZ = timezone("Europe/Paris")
+PARIS_TZ = zoneinfo.ZoneInfo("Europe/Paris")
 
 
 class SgeError(Exception):
@@ -63,26 +71,23 @@ class MeasurementApiSpec:
     def __init__(
         self,
         params: Dict[str, Optional[str]],
-        availability: Set[str],
-        metadata: Dict[str, Any],
+        metadata: Type[Any],
     ):
         self.params = params
-        self.availability = availability
         self.metadata = metadata
 
 
-class DetailedMeasurements:
+class DetailedMeasurementsV3:
 
-    # TODO(cyril) ensure Python >= 3.7 to preserve dict order
-
-    SERVICE_NAME = "ConsultationMesuresDetaillees-v2.0"
+    SERVICE_NAME = "ConsultationMesuresDetaillees-v3.0"
 
     MEASUREMENTS: Dict[str, MeasurementApiSpec] = {
         # -------------------------
         # Courbes au pas enregistré
         #
-        # 7 jours consécutifs maximum dans les 24 derniers mois par rapport
-        # à la date du jour, limités à la dernière mise en service.
+        # 7 jours consécutifs maximum dans les 24 derniers mois par
+        # rapport à la date du jour, limités à la dernière mise en
+        # service.
         #
         # Courbe de puissance active consommée brute
         "consumption/power/active/raw": MeasurementApiSpec(
@@ -91,24 +96,13 @@ class DetailedMeasurements:
                 "pointId": None,
                 "mesuresTypeCode": "COURBE",
                 "grandeurPhysique": "PA",
-                "soutirage": "true",
-                "injection": "false",
                 "dateDebut": None,
                 "dateFin": None,
                 "mesuresCorrigees": "false",
-                "accordClient": "true",
+                "sens": "SOUTIRAGE",
+                "cadreAcces": "ACCORD_CLIENT",
             },
-            availability={"C1", "C2", "C3", "C4", "C5"},
-            metadata={
-                "measurement": {
-                    "name": "active-power",
-                    "direction": "consumption",
-                    "quantity": "power",
-                    "type": "electrical",
-                    "unit": "W",
-                    "aggregation": "mean",
-                }
-            },
+            metadata=MetadataEnedisConsumptionPowerActiveRaw,
         ),
         # Courbe de puissance active consommée corrigées
         "consumption/power/active/corrected": MeasurementApiSpec(
@@ -117,23 +111,13 @@ class DetailedMeasurements:
                 "pointId": None,
                 "mesuresTypeCode": "COURBE",
                 "grandeurPhysique": "PA",
-                "soutirage": "true",
-                "injection": "false",
                 "dateDebut": None,
                 "dateFin": None,
                 "mesuresCorrigees": "true",
-                "accordClient": "true",
+                "sens": "SOUTIRAGE",
+                "cadreAcces": "ACCORD_CLIENT",
             },
-            availability={"C1", "C2", "C3", "C4"},
-            metadata={
-                "measurement": {
-                    "name": "active-power",
-                    "direction": "consumption",
-                    "unit": "W",
-                    "aggregation": "mean",
-                    "corrected": "true",
-                }
-            },
+            metadata=MetadataEnedisConsumptionPowerActiveRaw,
         ),
         # Courbe de puissance active produite brute
         # P1-P4
@@ -143,22 +127,13 @@ class DetailedMeasurements:
                 "pointId": None,
                 "mesuresTypeCode": "COURBE",
                 "grandeurPhysique": "PA",
-                "soutirage": "false",
-                "injection": "true",
                 "dateDebut": None,
                 "dateFin": None,
                 "mesuresCorrigees": "false",
-                "accordClient": "true",
+                "sens": "INJECTION",
+                "cadreAcces": "ACCORD_CLIENT",
             },
-            availability={"P1", "P2", "P3", "P4"},
-            metadata={
-                "measurement": {
-                    "name": "active-power",
-                    "direction": "production",
-                    "unit": "W",
-                    "aggregation": "mean",
-                }
-            },
+            metadata=MetadataEnedisProductionPowerActiveRaw,
         ),
         # Courbe de puissance active produite corrigées
         # P1-P3
@@ -168,25 +143,15 @@ class DetailedMeasurements:
                 "pointId": None,
                 "mesuresTypeCode": "COURBE",
                 "grandeurPhysique": "PA",
-                "soutirage": "false",
-                "injection": "true",
                 "dateDebut": None,
                 "dateFin": None,
                 "mesuresCorrigees": "true",
-                "accordClient": "true",
+                "sens": "INJECTION",
+                "cadreAcces": "ACCORD_CLIENT",
             },
-            availability={"P1", "P2", "P3"},
-            metadata={
-                "measurement": {
-                    "name": "active-power",
-                    "direction": "production",
-                    "unit": "W",
-                    "aggregation": "mean",
-                    "corrected": "true",
-                }
-            },
+            metadata=MetadataEnedisProductionPowerActiveRaw,
         ),
-        # Productions globales quotidiennes
+        # Consommations globales quotidiennes
         # C5
         "consumption/energy/active/daily": MeasurementApiSpec(
             params={
@@ -194,24 +159,13 @@ class DetailedMeasurements:
                 "pointId": None,
                 "mesuresTypeCode": "ENERGIE",
                 "grandeurPhysique": "EA",
-                "soutirage": "true",
-                "injection": "false",
                 "dateDebut": None,
                 "dateFin": None,
                 "mesuresCorrigees": "false",
-                "accordClient": "true",
+                "sens": "SOUTIRAGE",
+                "cadreAcces": "ACCORD_CLIENT",
             },
-            availability={"P4"},
-            metadata={
-                "measurement": {
-                    "name": "energy",
-                    "direction": "production",
-                    "unit": "Wh",
-                    "aggregation": "sum",
-                    "corrected": "false",
-                    "sampling-interval": "P1D",
-                }
-            },
+            metadata=MetadataEnedisConsumptionEnergyActive,
         ),
         # Productions globales quotidiennes
         # P4
@@ -221,24 +175,13 @@ class DetailedMeasurements:
                 "pointId": None,
                 "mesuresTypeCode": "ENERGIE",
                 "grandeurPhysique": "EA",
-                "soutirage": "false",
-                "injection": "true",
                 "dateDebut": None,
                 "dateFin": None,
                 "mesuresCorrigees": "false",
-                "accordClient": "true",
+                "sens": "INJECTION",
+                "cadreAcces": "ACCORD_CLIENT",
             },
-            availability={"P4"},
-            metadata={
-                "measurement": {
-                    "name": "energy",
-                    "direction": "production",
-                    "unit": "Wh",
-                    "aggregation": "sum",
-                    "corrected": "false",
-                    "sampling-interval": "P1D",
-                }
-            },
+            metadata=MetadataEnedisProductionEnergyActive,
         ),
     }
 
@@ -289,85 +232,62 @@ class DetailedMeasurements:
         )
 
         with SgeErrorConverter():
-            resp = self.client.service.consulterMesuresDetaillees(demande)
+            resp = self.client.service.consulterMesuresDetailleesV3(demande)
 
-        class Quoalise(ElementBase):
-            name = "quoalise"
-            namespace = "urn:quoalise:0"
+        meta_sig = inspect.signature(measurement.metadata.__init__)
+        if "sampling_interval" in meta_sig.parameters:
+            sampling_interval = SamplingInterval(resp.grandeur[0].points[0].p)
+            meta = measurement.metadata(usage_point_id, sampling_interval)
+        else:
+            meta = measurement.metadata(usage_point_id)
 
-        quoalise_element = Quoalise()
-
-        xmldata = ET.Element("data")
-        quoalise_element.xml.append(xmldata)
-
-        meta = ET.Element("meta")
-        xmldata.append(meta)
-
-        device = ET.Element("device", attrib={"type": "electricity-meter"})
-        meta.append(device)
-        device.append(
-            ET.Element(
-                "identifier",
-                attrib={"authority": "enedis", "type": "prm", "value": usage_point_id},
-            )
-        )
-
-        measurement_meta = ET.Element(
-            "measurement", attrib=measurement.metadata["measurement"]
-        )
-        meta.append(measurement_meta)
-
-        sensml = ET.Element("sensml", xmlns="urn:ietf:params:xml:ns:senml")
-        xmldata.append(sensml)
-
-        assert resp.grandeur[0].unite == measurement_meta.attrib["unit"]
-
-        first = True
-        if "sampling-interval" not in measurement_meta.attrib:
-            measurement_meta.attrib["sampling-interval"] = resp.grandeur[0].mesure[0].p
-
-        m = re.match(r"^PT(\d+)M$", measurement_meta.attrib["sampling-interval"])
+        m = re.match(r"^PT(\d+)M$", meta.measurement.sampling_interval.value)
         if m:
             # load curve is stamped by SGE API at the end of measurement periods
             # TODO, is this true for all segments? (see HDM)
             time_offset = int(m.group(1)) * 60
-        elif measurement_meta.attrib["sampling-interval"] == "P1D":
+        elif meta.measurement.sampling_interval.value == "P1D":
             # daily data is stamped at the begining of the day
             time_offset = 0
         else:
             raise SgeError(
-                "Unexpected time period: "
-                + measurement_meta.attrib["sampling-interval"]
+                "Unexpected time period: " + meta.measurement.sampling_interval.value
             )
 
-        first = True
-        bt = None
-        for meas in resp.grandeur[0].mesure:
-            v = str(meas.v)
-            t = int(meas.d.astimezone(pytz.utc).timestamp()) - time_offset
+        assert resp.grandeur[0].unite == meta.measurement.unit.value
+
+        records = []
+
+        for meas in resp.grandeur[0].points:
+            v = int(meas.v)
+            # t = dt.datetime.strptime(meas.d, "%Y-%m-%d %H:%M:%S")
+            t = dt.datetime.fromisoformat(meas.d)
+            t = t.replace(tzinfo=PARIS_TZ)
+            t -= dt.timedelta(seconds=time_offset)
             if "p" in dir(meas):
                 # TODO fails when sampling interval changed (it can happen
                 # during the day). Send with different meta instead.
                 # check journal on 2023-10-27
                 # assert meas.p == measurement_meta.attrib["sampling-interval"]
                 pass
-            if first:
-                bt = t
-                senml = ET.Element(
-                    "senml",
-                    bn=f"urn:dev:prm:{usage_point_id}_{name}",
-                    bt=str(t),
-                    t="0",
-                    v=str(v),
-                    bu=measurement_meta.attrib["unit"],
-                )
-                first = False
-            else:
-                assert bt is not None
-                t = t - bt
-                senml = ET.Element("senml", t=str(t), v=str(v))
-            sensml.append(senml)
+            record = quoalise.data.Record(
+                name=f"urn:dev:prm:{usage_point_id}_{name}",
+                time=t,
+                unit=meta.measurement.unit.value,
+                value=v,
+            )
+            records.append(record)
 
+        data = quoalise.data.Data(
+            metadata=quoalise.data.Metadata(meta.to_dict()), records=records
+        )
+
+        class Quoalise(ElementBase):
+            name = "quoalise"
+            namespace = "urn:quoalise:0"
+
+        quoalise_element = Quoalise()
+        quoalise_element.append(data.to_xml())
         return quoalise_element
 
 

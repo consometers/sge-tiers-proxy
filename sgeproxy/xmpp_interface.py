@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 import re
 
 import sgeproxy.sge
-from sgeproxy.sge import SgeError, DetailedMeasurements, TechnicalData
+from sgeproxy.sge import SgeError, DetailedMeasurementsV3, TechnicalData
 from sgeproxy.db import (
     User,
     UsagePoint,
@@ -135,7 +135,7 @@ class GetHistory:
             try:
                 consent = user.consent_for(db, usage_point_id)
                 call = WebservicesCall(
-                    webservice=DetailedMeasurements.SERVICE_NAME,
+                    webservice=DetailedMeasurementsV3.SERVICE_NAME,
                     usage_point_id=usage_point_id,
                     user=user,
                     consent=consent,
