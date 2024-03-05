@@ -3,7 +3,7 @@ import statistics
 from typing import Dict, Iterable, Optional, List, Tuple, Union, TextIO
 import xml.etree.ElementTree as ET
 import datetime as dt
-import pytz
+import zoneinfo
 import re
 
 from quoalise.data import Record
@@ -122,7 +122,7 @@ class R171:
                 # No time zone is specified in R171
                 # Most of the other files mention it, and its Paris time
                 time = dt.datetime.fromisoformat(time_str)
-                time = pytz.timezone("Europe/Paris").localize(time)
+                time = time.replace(tzinfo=zoneinfo.ZoneInfo("Europe/Paris"))
 
                 yield meta, Record(name, time, unit, value)
 
@@ -237,7 +237,7 @@ class R151:
             # like 2022-03-17
             time_str = _find_text(data, "Date_Releve")
             time = dt.datetime.fromisoformat(time_str)
-            time = pytz.timezone("Europe/Paris").localize(time)
+            time = time.replace(tzinfo=zoneinfo.ZoneInfo("Europe/Paris"))
 
             base_name = f"urn:dev:prm:{usage_point}_{direction}"
 

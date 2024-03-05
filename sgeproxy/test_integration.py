@@ -5,7 +5,7 @@ import asyncio
 import unittest
 import quoalise
 import datetime as dt
-import pytz
+import zoneinfo
 from typing import Tuple, Iterable
 from statistics import mean
 
@@ -18,11 +18,11 @@ def parse_iso_date(date_str):
 
 
 def previous_days(days: int) -> Tuple[dt.datetime, dt.datetime]:
-    paris_tz = pytz.timezone("Europe/Paris")
-    end_time = paris_tz.localize(dt.datetime.now()).replace(
+    paris_tz = zoneinfo.ZoneInfo("Europe/Paris")
+    end_time = dt.datetime.now(paris_tz).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
-    start_time = paris_tz.normalize(end_time - dt.timedelta(days=days))
+    start_time = end_time - dt.timedelta(days=days)
 
     return start_time, end_time
 

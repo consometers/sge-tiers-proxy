@@ -2,7 +2,7 @@
 
 import logging
 import datetime as dt
-import pytz
+import zoneinfo
 
 from slixmpp.exceptions import XMPPError
 from sqlalchemy.exc import IntegrityError
@@ -87,7 +87,7 @@ class GetHistory:
             value=self.SAMPLE_IDENTIFIER,
         )
 
-        end_time = dt.datetime.now(pytz.timezone("Europe/Paris")).replace(
+        end_time = dt.datetime.now(zoneinfo.ZoneInfo("Europe/Paris")).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         start_time = end_time - dt.timedelta(days=1)
